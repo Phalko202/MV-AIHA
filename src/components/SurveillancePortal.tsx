@@ -231,9 +231,9 @@ export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: bo
           <div className="hidden xl:flex items-center gap-2 animate-fadeIn">
             {view === "fetching" ? (
               <>
-                <Chip label="Source" value="Vinavi API" color="text-blue-700" />
-                <Chip label="Mode" value="Live sync" color="text-emerald-600" />
-                <Chip label="Seeded" value="Hidden" color="text-slate-700" />
+                <Chip label="Sources" value="Vinavi + Foreign" color="text-blue-700" />
+                <Chip label="Mode" value="Paused first" color="text-emerald-600" />
+                <Chip label="AI" value="Surveillance only" color="text-slate-700" />
               </>
             ) : view === "logging" ? (
               <>
@@ -882,6 +882,7 @@ interface SeededQueueSummary {
 }
 
 interface VinaviFeedEvent {
+  sourcePortal?: "Vinavi" | "Foreign";
   episodeId: string;
   facilityId: string;
   diagnosis: string | null;
@@ -904,17 +905,21 @@ interface VinaviSyncSnapshot {
 }
 
 function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "timestamp">) => void }) {
-  const [syncPaused, setSyncPaused] = useState(false);
+  const [vinaviPaused, setVinaviPaused] = useState(true);
+  const [foreignPaused, setForeignPaused] = useState(true);
   const [step, setStep] = useState(0);
   const [scope, setScope] = useState<IntakeScope>("all");
   const [manualNote, setManualNote] = useState("");
-  const [snapshot, setSnapshot] = useState<VinaviSyncSnapshot | null>(null);
+  const [vinaviSnapshot, setVinaviSnapshot] = useState<VinaviSyncSnapshot | null>(null);
+  const [foreignSnapshot, setForeignSnapshot] = useState<VinaviSyncSnapshot | null>(null);
   const [feedEvents, setFeedEvents] = useState<VinaviFeedEvent[]>([]);
   const [queueError, setQueueError] = useState<string | null>(null);
-  const [lastSync, setLastSync] = useState<string | null>(null);
+  const [lastVinaviSync, setLastVinaviSync] = useState<string | null>(null);
+  const [lastForeignSync, setLastForeignSync] = useState<string | null>(null);
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<{ paused?: boolean; pipelineModels?: string[]; purgeSummary?: { recordCount: number; removedFieldCount: number; scrubbedTextSpans: number }; briefing?: { briefing: string; priorityLevel: string; recommendedActions: string[] }; error?: string } | null>(null);
-  const previousTotalRef = useRef<number | null>(null);
+  const previousVinaviTotalRef = useRef<number | null>(null);
+  const previousForeignTotalRef = useRef<number | null>(null);
 
   const bots = useMemo(() => [
     { name: "Raw Ingestion Buffer", icon: FirstAidKit, task: "cleans incoming batches", model: "DeepSeek V4 Flash" },
@@ -925,47 +930,55 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
 
   const visibleEvents = feedEvents.filter((item) => scope === "all" ? true : item.status === scope);
   const queueSize = visibleEvents.length;
-  const readyCount = snapshot?.ready ?? 0;
-  const pendingCount = snapshot?.pending ?? 0;
+  const readyCount = feedEvents.filter((item) => item.status === "ready").length;
+  const pendingCount = feedEvents.filter((item) => item.status === "pending").length;
 
-  const loadVinaviFeed = useCallback(async (manual = false) => {
+  const loadFeed = useCallback(async (source: "Vinavi" | "Foreign", manual = false) => {
+    const endpoint = source === "Vinavi" ? "/api/vinavi/ingest" : "/api/foreign/ingest";
     try {
-      const response = await fetch("/api/vinavi/ingest", { cache: "no-store" });
+      const response = await fetch(endpoint, { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json() as VinaviSyncSnapshot;
-      const readyEvents = payload.readyEvents ?? [];
-      const pendingEvents = payload.pendingEvents ?? [];
+      const readyEvents = (payload.readyEvents ?? []).map((item) => ({ ...item, sourcePortal: source }));
+      const pendingEvents = (payload.pendingEvents ?? []).map((item) => ({ ...item, sourcePortal: source }));
       const allEvents = [...readyEvents, ...pendingEvents].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
-      setSnapshot({ ...payload, readyEvents, pendingEvents });
-      setFeedEvents(allEvents);
-      setLastSync(payload.updatedAt ?? new Date().toISOString());
+      if (source === "Vinavi") {
+        setVinaviSnapshot({ ...payload, readyEvents, pendingEvents });
+        setLastVinaviSync(payload.updatedAt ?? new Date().toISOString());
+      } else {
+        setForeignSnapshot({ ...payload, readyEvents, pendingEvents });
+        setLastForeignSync(payload.updatedAt ?? new Date().toISOString());
+      }
+      setFeedEvents((previous) => [...previous.filter((item) => item.sourcePortal !== source), ...allEvents].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)));
       setQueueError(null);
       if (manual) {
-        onLog({ level: "info", source: "Vinavi API Sync", message: `Manual sync completed: ${payload.ready} ready event(s), ${payload.pending} held blank episode(s).` });
+        onLog({ level: "info", source: `${source} API Sync`, message: `Manual sync completed: ${payload.ready} ready event(s), ${payload.pending} held episode(s).` });
       }
-      if (previousTotalRef.current !== null && previousTotalRef.current !== payload.total) {
-        onLog({ level: "warning", source: "Vinavi API Sync", message: `Feed count changed from ${previousTotalRef.current} to ${payload.total}; AI review queue refreshed.` });
+      const ref = source === "Vinavi" ? previousVinaviTotalRef : previousForeignTotalRef;
+      if (ref.current !== null && ref.current !== payload.total) {
+        onLog({ level: "warning", source: `${source} API Sync`, message: `Feed count changed from ${ref.current} to ${payload.total}; AI review queue refreshed.` });
       }
-      previousTotalRef.current = payload.total;
+      ref.current = payload.total;
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Vinavi API unavailable";
+      const message = error instanceof Error ? error.message : `${source} API unavailable`;
       setQueueError(message);
-      onLog({ level: "error", source: "Vinavi API Sync", message: `Local Vinavi sync failed: ${message}` });
+      onLog({ level: "error", source: `${source} API Sync`, message: `${source} sync failed: ${message}` });
     }
   }, [onLog]);
 
-  const toggleSync = () => {
-    const nextPaused = !syncPaused;
-    setSyncPaused(nextPaused);
-    onLog({ level: nextPaused ? "warning" : "info", source: "Vinavi API Sync", message: nextPaused ? "Local Vinavi API syncing paused by operator." : "Local Vinavi API syncing resumed by operator." });
-    if (!nextPaused) void loadVinaviFeed(true);
+  const toggleSourceSync = (source: "Vinavi" | "Foreign") => {
+    const paused = source === "Vinavi" ? vinaviPaused : foreignPaused;
+    const nextPaused = !paused;
+    if (source === "Vinavi") setVinaviPaused(nextPaused); else setForeignPaused(nextPaused);
+    onLog({ level: nextPaused ? "warning" : "info", source: `${source} API Sync`, message: nextPaused ? `${source} syncing paused by operator.` : `${source} syncing resumed by operator.` });
+    if (!nextPaused) void loadFeed(source, true);
   };
 
   const runPipeline = async () => {
     setPipelineRunning(true);
     setPipelineResult(null);
     const logs = visibleEvents.filter((item) => item.status === "ready").slice(0, 40).map((item) => ({
-      sourcePortal: "Vinavi",
+      sourcePortal: item.sourcePortal ?? "Vinavi",
       sourceAction: "consultation-sync",
       episodeId: item.episodeId,
       facility: item.facilityId,
@@ -986,7 +999,7 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
       setPipelineResult(payload.analysis ?? payload);
-      onLog({ level: "critical", source: "AI Feed Detector", message: `Three-stage AI review completed for ${logs.length} Vinavi feed event(s).` });
+      onLog({ level: "critical", source: "AI Feed Detector", message: `Three-stage AI review completed for ${logs.length} source feed event(s).` });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Pipeline failed";
       setPipelineResult({ error: message });
@@ -997,29 +1010,33 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
   };
 
   useEffect(() => {
-    void loadVinaviFeed(false);
-  }, [loadVinaviFeed]);
-
-  useEffect(() => {
-    if (syncPaused) return undefined;
-    const id = setInterval(() => void loadVinaviFeed(false), 4500);
+    if (vinaviPaused) return undefined;
+    const id = setInterval(() => void loadFeed("Vinavi", false), 4500);
     return () => clearInterval(id);
-  }, [syncPaused, loadVinaviFeed]);
+  }, [vinaviPaused, loadFeed]);
 
   useEffect(() => {
-    if (syncPaused) return undefined;
+    if (foreignPaused) return undefined;
+    const id = setInterval(() => void loadFeed("Foreign", false), 4500);
+    return () => clearInterval(id);
+  }, [foreignPaused, loadFeed]);
+
+  useEffect(() => {
+    if (vinaviPaused && foreignPaused) return undefined;
     const id = setInterval(() => setStep((current) => (current + 1) % 12), 1200);
     return () => clearInterval(id);
-  }, [syncPaused]);
+  }, [vinaviPaused, foreignPaused]);
 
   return (
     <div className="space-y-4">
       <Panel className="p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3"><FlatCategoryIcon icon={Bot} tone="emerald" /><div><p className="text-lg font-black text-slate-950">Live Processing</p><p className="text-sm text-slate-500">Only local Vinavi API sync events appear here.</p></div></div>
+          <div className="flex items-center gap-3"><FlatCategoryIcon icon={Bot} tone="emerald" /><div><p className="text-lg font-black text-slate-950">Live Processing</p><p className="text-sm text-slate-500">Vinavi and Foreign portal feeds are paused until resumed for recording.</p></div></div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => void loadVinaviFeed(true)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer"><RefreshCw className="h-4 w-4" />Sync Vinavi API</button>
-            <button onClick={toggleSync} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black text-white cursor-pointer ${syncPaused ? "bg-emerald-600 hover:bg-emerald-500" : "bg-slate-950 hover:bg-slate-800"}`}><Play className="h-4 w-4" />{syncPaused ? "Resume Vinavi sync" : "Pause Vinavi sync"}</button>
+            <button onClick={() => void loadFeed("Vinavi", true)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer"><RefreshCw className="h-4 w-4" />Sync Vinavi</button>
+            <button onClick={() => toggleSourceSync("Vinavi")} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black text-white cursor-pointer ${vinaviPaused ? "bg-emerald-600 hover:bg-emerald-500" : "bg-slate-950 hover:bg-slate-800"}`}><Play className="h-4 w-4" />{vinaviPaused ? "Resume Vinavi" : "Pause Vinavi"}</button>
+            <button onClick={() => void loadFeed("Foreign", true)} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 hover:text-emerald-900 cursor-pointer"><RefreshCw className="h-4 w-4" />Sync Foreign</button>
+            <button onClick={() => toggleSourceSync("Foreign")} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black text-white cursor-pointer ${foreignPaused ? "bg-emerald-600 hover:bg-emerald-500" : "bg-slate-950 hover:bg-slate-800"}`}><Play className="h-4 w-4" />{foreignPaused ? "Resume Foreign" : "Pause Foreign"}</button>
           </div>
         </div>
       </Panel>
@@ -1027,9 +1044,9 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-4">
         <Panel className="p-5">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <div><p className="text-sm font-black text-slate-800">Vinavi API feed</p><p className="text-xs text-slate-500">Generated seed rows and demo histories are hidden from this screen.</p></div>
+            <div><p className="text-sm font-black text-slate-800">Source API feed</p><p className="text-xs text-slate-500">Shows safe records arriving from Vinavi and Foreign portals.</p></div>
             <div className="flex items-center gap-2 flex-wrap">
-              {lastSync && <span className="rounded-2xl border border-white/80 bg-white/70 px-3 py-2 text-[10px] font-black text-slate-500">Last sync {new Date(lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}
+              {(lastVinaviSync || lastForeignSync) && <span className="rounded-2xl border border-white/80 bg-white/70 px-3 py-2 text-[10px] font-black text-slate-500">Last sync {new Date(lastForeignSync ?? lastVinaviSync ?? "").toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}
               <div className="flex flex-wrap gap-1 rounded-2xl border border-white/80 bg-white/70 p-1">
                 {(["all", "ready", "pending"] as IntakeScope[]).map((item) => <button key={item} onClick={() => setScope(item)} className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${scope === item ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-950"}`}>{item}</button>)}
               </div>
@@ -1046,7 +1063,7 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
           </div>
 
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-            {visibleEvents.length === 0 && <div className="rounded-3xl border border-dashed border-slate-200 bg-white/60 p-8 text-center"><p className="text-sm font-black text-slate-700">No Vinavi feed events are visible.</p><p className="mt-1 text-xs text-slate-500">Create or close a consultation in the local Vinavi portal, then sync this API feed.</p></div>}
+            {visibleEvents.length === 0 && <div className="rounded-3xl border border-dashed border-slate-200 bg-white/60 p-8 text-center"><p className="text-sm font-black text-slate-700">Feeds are paused.</p><p className="mt-1 text-xs text-slate-500">Send records from Vinavi or Foreign portal, then resume the matching sync here.</p></div>}
             {visibleEvents.map((item, index) => <VinaviFeedRow key={`${item.status}-${item.episodeId}`} item={item} active={index === step % Math.max(1, visibleEvents.length)} />)}
           </div>
         </Panel>
@@ -1058,9 +1075,9 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
           <Panel className="p-4">
             <p className="text-xs font-black uppercase tracking-wide text-slate-500">Sync state</p>
             <div className="mt-3 grid gap-2">
-              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Local Vinavi API</span><span className={`font-black ${syncPaused ? "text-amber-600" : "text-emerald-600"}`}>{syncPaused ? "Paused" : "Syncing"}</span></div>
-              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Total received</span><span className="font-mono font-black text-blue-700">{(snapshot?.total ?? 0).toLocaleString()}</span></div>
-              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Static seed UI</span><span className="font-black text-slate-500">Removed</span></div>
+              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Vinavi API</span><span className={`font-black ${vinaviPaused ? "text-amber-600" : "text-emerald-600"}`}>{vinaviPaused ? "Paused" : "Syncing"}</span></div>
+              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Foreign API</span><span className={`font-black ${foreignPaused ? "text-amber-600" : "text-emerald-600"}`}>{foreignPaused ? "Paused" : "Syncing"}</span></div>
+              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Total received</span><span className="font-mono font-black text-blue-700">{((vinaviSnapshot?.total ?? 0) + (foreignSnapshot?.total ?? 0)).toLocaleString()}</span></div>
             </div>
           </Panel>
           <LiveOpenRouterProbe event={visibleEvents.find((item) => item.status === "ready")} />
@@ -1089,13 +1106,14 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
 
 function VinaviFeedRow({ item, active }: { item: VinaviFeedEvent; active: boolean }) {
   const received = new Date(item.receivedAt);
+  const source = item.sourcePortal ?? "Vinavi";
   return (
     <motion.div layout animate={{ y: active ? -2 : 0 }} transition={{ type: "spring", stiffness: 260, damping: 22 }} className={`rounded-2xl border px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] ${active ? "border-blue-200 bg-blue-50/80" : "border-slate-100 bg-white/80"}`}>
       <div className="flex items-center gap-3">
         <span className={`h-10 w-10 rounded-2xl flex items-center justify-center text-xs font-black ${item.status === "ready" ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-700"}`}>{item.status === "ready" ? "AI" : "20m"}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-black text-slate-800">{item.episodeId}</p>
-          <p className="text-[11px] text-slate-500">Vinavi · {item.facilityId} · {received.toLocaleDateString()} {received.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+          <p className="text-[11px] text-slate-500">{source} · {item.facilityId} · {received.toLocaleDateString()} {received.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
         </div>
         <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${item.status === "ready" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status}</span>
       </div>

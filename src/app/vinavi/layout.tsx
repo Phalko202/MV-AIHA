@@ -5,14 +5,17 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   ArrowUpRight,
+  Database,
   FileText,
   HeartPulse,
   Search,
   ShieldCheck,
   Stethoscope,
 } from "lucide-react";
-import { searchPatients } from "@/lib/mock-data";
+import { MOCK_PATIENTS, searchPatients } from "@/lib/mock-data";
 import { log } from "@/lib/logger";
+
+const SURVEILLANCE_ORIGIN = process.env.NEXT_PUBLIC_SURVEILLANCE_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "");
 
 const INTERNAL_ITEMS = [
   {
@@ -42,6 +45,48 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [dateLabel, setDateLabel] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [seedAmount, setSeedAmount] = useState("25");
+  const [seedStatus, setSeedStatus] = useState("Ready to send consultations.");
+
+  const totalConsultations = MOCK_PATIENTS.reduce((sum, patient) => sum + patient.episodes.length, 0);
+
+  const seedConsultations = async () => {
+    const amount = Math.max(1, Math.min(200, Number(seedAmount) || 25));
+    setSeedStatus("Sending safe consultations to surveillance intake...");
+    try {
+      const episodes = MOCK_PATIENTS.flatMap((patient) => patient.episodes.map((episode) => ({ patient, episode })));
+      for (let index = 0; index < amount; index += 1) {
+        const item = episodes[index % episodes.length];
+        await fetch(`${SURVEILLANCE_ORIGIN}/api/vinavi/ingest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            episodeId: `${item.episode.id}-DEMO-${Date.now()}-${index}`,
+            patientId: `VINAVI-${(index + 1).toString().padStart(4, "0")}`,
+            patientAge: item.patient.age,
+            patientGender: item.patient.gender,
+            patientAtoll: item.patient.atoll,
+            patientIsland: item.patient.island,
+            facilityId: item.patient.hospital.toLowerCase().includes("hulhum") ? "hulhumale" : "igmh",
+            doctorName: "Vinavi clinician",
+            specialty: item.episode.specialty,
+            openedAt: new Date().toISOString(),
+            closedAt: new Date().toISOString(),
+            status: "closed",
+            diagnosis: item.episode.diagnosis,
+            icd10Code: item.episode.diagnosis.toLowerCase().includes("respiratory") ? "J11" : item.episode.diagnosis.toLowerCase().includes("asthma") ? "J45" : "Z02.7",
+            sections: item.episode.sections.map((section) => ({ type: section.type, content: section.content, createdAt: section.createdAt })),
+            vitals: item.episode.vitals.map((vital) => ({ timestamp: vital.timestamp, bp: vital.bp, heartRate: vital.heartRate, temp: vital.temp })),
+            origin: "local",
+          }),
+        });
+      }
+      setSeedStatus(`${amount} consultations sent. Resume Vinavi sync in surveillance to show intake.`);
+    } catch (error) {
+      setSeedStatus(`Send failed: ${error instanceof Error ? error.message : "surveillance API unavailable"}`);
+    }
+  };
 
   useEffect(() => {
     const updateDateLabel = () => {
@@ -146,7 +191,7 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header className="shrink-0 bg-[#e34234] px-4 py-2 text-white shadow-[0_2px_10px_rgba(0,0,0,0.22)]">
           <div className="flex items-center gap-4">
-            <button className="rounded p-2 text-white/95 hover:bg-white/10" aria-label="Menu">
+            <button onClick={() => setMenuOpen((current) => !current)} className="rounded p-2 text-white/95 hover:bg-white/10" aria-label="Menu">
               <span className="block h-0.5 w-5 bg-white" />
               <span className="mt-1 block h-0.5 w-5 bg-white" />
               <span className="mt-1 block h-0.5 w-5 bg-white" />
@@ -197,13 +242,31 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
 
             <div className="ml-auto flex shrink-0 items-center gap-4 text-right">
               <div>
-                <p className="text-sm font-semibold leading-tight">Muhammad Mujtaba Ur Rehman</p>
+                <p className="text-sm font-semibold leading-tight">Clinical Session</p>
                 <p className="text-xs font-semibold leading-tight text-white/80">Hulhumale' Hospital</p>
               </div>
               <Activity className="h-5 w-5 text-white" />
               <ShieldCheck className="h-5 w-5 text-white" />
             </div>
           </div>
+          {menuOpen && (
+            <div className="absolute left-4 top-16 z-50 w-[360px] rounded border border-slate-200 bg-white p-4 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.24)]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-rose-600">Pitch controls</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="rounded bg-slate-50 p-3"><p className="text-xs text-slate-500">Patients</p><p className="text-2xl font-black">{MOCK_PATIENTS.length}</p></div>
+                <div className="rounded bg-slate-50 p-3"><p className="text-xs text-slate-500">Consultations</p><p className="text-2xl font-black">{totalConsultations}</p></div>
+              </div>
+              <div className="mt-4 rounded border border-rose-100 bg-rose-50 p-3">
+                <p className="text-sm font-bold text-rose-800">Send consultation batch</p>
+                <p className="mt-1 text-xs leading-5 text-rose-700/80">This only pushes safe records to the surveillance ingest API. It does not start AI.</p>
+                <div className="mt-3 flex gap-2">
+                  <input value={seedAmount} onChange={(event) => setSeedAmount(event.target.value.replace(/[^0-9]/g, "").slice(0, 3))} className="min-w-0 flex-1 rounded border border-rose-200 bg-white px-3 py-2 text-sm font-bold outline-none" />
+                  <button onClick={seedConsultations} className="inline-flex items-center gap-2 rounded bg-rose-600 px-3 py-2 text-sm font-bold text-white"><Database className="h-4 w-4" />Send</button>
+                </div>
+                <p className="mt-2 text-xs font-semibold text-rose-800">{seedStatus}</p>
+              </div>
+            </div>
+          )}
         </header>
 
         <main className="min-h-0 flex-1 overflow-auto bg-[#f5f5f5]">
