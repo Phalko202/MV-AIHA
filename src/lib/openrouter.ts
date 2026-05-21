@@ -2,9 +2,9 @@
 /*  OPENROUTER CLIENT + MEDICAL ENSEMBLE                               */
 /* ------------------------------------------------------------------ */
 /*  Reads OPENROUTER_API_KEY from .env.local. Never logs the           */
-/*  unredacted episode. Runs >=5 free medical-capable models in        */
-/*  parallel and majority-votes on the diagnosis to suppress           */
-/*  individual model hallucinations.                                   */
+/*  unredacted episode. Uses the three OpenRouter models selected      */
+/*  for MV-AIHS strategic processing and still cross-checks them       */
+/*  before promoting a signal.                                         */
 /* ------------------------------------------------------------------ */
 
 import { assertRedacted, type RedactedEpisode } from "@/lib/redact";
@@ -12,20 +12,15 @@ import { assertRedacted, type RedactedEpisode } from "@/lib/redact";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /**
- * Free models on OpenRouter known to perform on medical reasoning tasks.
+ * OpenRouter models selected for MV-AIHS.
  * Override at runtime with MV_AIHA_MODELS env (comma-separated).
- * Keep at least 5 entries so majority voting is meaningful.
  */
 export const MEDICAL_MODELS: string[] = (
   process.env.MV_AIHA_MODELS ??
   [
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "deepseek/deepseek-r1:free",
-    "qwen/qwen-2.5-72b-instruct:free",
-    "google/gemma-2-9b-it:free",
-    "mistralai/mistral-7b-instruct:free",
-    "nousresearch/hermes-3-llama-3.1-405b:free",
-    "microsoft/phi-3-mini-128k-instruct:free",
+    "deepseek/deepseek-v4-flash:free",
+    "openai/gpt-oss-120b:free",
+    "google/gemma-4-31b-it:free",
   ].join(",")
 ).split(",").map((value) => value.trim()).filter(Boolean);
 
@@ -52,7 +47,7 @@ export interface EnsembleResult {
   modelCount: number;
 }
 
-const SYSTEM_PROMPT = `You are a Maldives public-health triage assistant. You receive a fully de-identified clinical episode. You will return STRICT JSON only, with this exact schema:
+const SYSTEM_PROMPT = `You are a Maldives public-health triage assistant operating inside the MV-AIHS strategic stack. You receive a fully de-identified clinical episode. You will return STRICT JSON only, with this exact schema:
 {"diagnosis": string, "icd10": string, "severity": "mild"|"moderate"|"severe"|"critical", "confidence": number between 0 and 1, "recommendedAction": string}
 No prose, no markdown, no code fences. If the evidence is insufficient, set diagnosis to "INSUFFICIENT_DATA" and confidence to 0.`;
 

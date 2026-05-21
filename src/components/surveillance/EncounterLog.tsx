@@ -9,6 +9,7 @@ import {
   type DiseaseCode,
   type PatientEncounter,
 } from "@/lib/surveillance-api";
+import type { EncounterLogFilter } from "@/lib/analytics-filters";
 
 const severityColor = {
   mild: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -29,7 +30,7 @@ type OriginFilter = "all" | PatientEncounter["origin"];
 
 interface Props {
   disease: DiseaseCode | "all";
-  filter?: Partial<PatientEncounter>;
+  filter?: EncounterLogFilter;
   label?: string;
   onClose: () => void;
 }
@@ -345,7 +346,7 @@ function AuditRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function matchesPartialFilter(encounter: PatientEncounter, filter: Partial<PatientEncounter>) {
+function matchesPartialFilter(encounter: PatientEncounter, filter: EncounterLogFilter) {
   return Object.entries(filter).every(([key, value]) => {
     if (value === undefined) return true;
     if (key === "onsetDate" && typeof value === "string" && value.includes("|")) {
@@ -353,6 +354,9 @@ function matchesPartialFilter(encounter: PatientEncounter, filter: Partial<Patie
       if (start !== "..." && encounter.onsetDate < start) return false;
       if (end !== "..." && encounter.onsetDate > end) return false;
       return true;
+    }
+    if (Array.isArray(value)) {
+      return value.includes((encounter as unknown as Record<string, unknown>)[key]);
     }
     return (encounter as unknown as Record<string, unknown>)[key] === value;
   });

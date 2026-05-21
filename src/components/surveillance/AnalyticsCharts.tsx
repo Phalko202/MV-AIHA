@@ -12,7 +12,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   Treemap,
 } from "recharts";
-import { Activity, CalendarDays, Check, ChevronDown, Filter, RotateCcw, Search, ShieldCheck } from "lucide-react";
+import { Activity, CalendarDays, Check, ChevronDown, Filter, MapPin, RotateCcw, Search, ShieldCheck, SlidersHorizontal, UserRound, X } from "lucide-react";
 
 import {
   DISEASES,
@@ -24,6 +24,16 @@ import {
   type DiseaseCode,
   type PatientEncounter,
 } from "@/lib/surveillance-api";
+import {
+  DEFAULT_ANALYTICS_FILTERS,
+  analyticsDateBounds,
+  countAnalyticsFilters,
+  filterAnalyticsEncounters,
+  isDateInAnalyticsBounds,
+  type AnalyticsDateFilter,
+  type AnalyticsFilterState,
+  type DatePreset,
+} from "@/lib/analytics-filters";
 
 const PALETTE = ["#2563eb", "#dc2626", "#f59e0b", "#10b981", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#6366f1"];
 const AXIS_TICK = { fontSize: 11, fill: "#64748b", fontWeight: 700 };
@@ -102,14 +112,6 @@ const CHARTS: ChartDef[] = [
 
 const GROUP_ORDER = ["Burden", "Demographics", "Clinical", "Geographic", "Laboratory", "Prevention"] as const;
 
-type DatePreset = "all" | "last7" | "last14" | "last30" | "custom";
-
-interface AnalyticsDateFilter {
-  preset: DatePreset;
-  start: string;
-  end: string;
-}
-
 const DATE_PRESETS: { value: DatePreset; label: string }[] = [
   { value: "all", label: "All dates" },
   { value: "last7", label: "7 days" },
@@ -124,28 +126,26 @@ const MENU_ICON = {
   geographic: "/icons/people/earth.png",
 };
 
-const DEFAULT_DATE_FILTER: AnalyticsDateFilter = { preset: "all", start: "", end: "" };
-
 interface AnalyticsChartsProps {
   onShowEncounters: (disease: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void;
-  disease: DiseaseCode | "all";
-  setDisease: (val: DiseaseCode | "all") => void;
+  filters: AnalyticsFilterState;
+  onFiltersChange: (next: AnalyticsFilterState) => void;
 }
 
-export default function AnalyticsCharts({ onShowEncounters, disease, setDisease }: AnalyticsChartsProps) {
+export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersChange }: AnalyticsChartsProps) {
   const [active, setActive] = useState<ChartId>("weekly_trend");
-  const [dateFilter, setDateFilter] = useState<AnalyticsDateFilter>(DEFAULT_DATE_FILTER);
   const [ready, setReady] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setReady(true)); }, []);
 
   const chartDef = CHARTS.find((c) => c.id === active)!;
-  const selectedDiseaseName = disease === "all" ? "All diseases" : DISEASE_BY_CODE[disease].name;
-  const filteredCount = useMemo(() => filterEncountersByDate(encountersFor(disease), dateFilter).length, [disease, dateFilter]);
+  const selectedDiseaseCode = filters.diagnosis === "all" ? null : filters.diagnosis;
+  const selectedDiseaseName = filters.diagnosis === "all" ? "All diseases" : DISEASE_BY_CODE[filters.diagnosis].name;
+  const filteredCount = useMemo(() => filterAnalyticsEncounters(encountersFor(filters.diagnosis), filters).length, [filters]);
   const notApplicableReason =
-    chartDef.requiresDisease && disease === "all"
+    chartDef.requiresDisease && filters.diagnosis === "all"
       ? "Select a specific disease above to view this chart."
-      : chartDef.notApplicableReason && disease !== "all"
-        ? chartDef.notApplicableReason(disease)
+      : chartDef.notApplicableReason && filters.diagnosis !== "all"
+        ? chartDef.notApplicableReason(filters.diagnosis)
         : null;
 
   return (
@@ -185,11 +185,10 @@ export default function AnalyticsCharts({ onShowEncounters, disease, setDisease 
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-end">
-              <DiseaseFilter disease={disease} onChange={setDisease} />
-              <DateFilterControl value={dateFilter} onChange={setDateFilter} />
-              {disease !== "all" && (
+              <AnalyticsFilterLauncher filters={filters} onChange={onFiltersChange} />
+              {selectedDiseaseCode && (
                 <button
-                  onClick={() => onShowEncounters(disease, dateFilterToEncounterFilter(dateFilter), `${DISEASE_BY_CODE[disease].name} — ${filteredCount.toLocaleString()} filtered encounters`)}
+                  onClick={() => onShowEncounters(selectedDiseaseCode, dateFilterToEncounterFilter(filters), `${DISEASE_BY_CODE[selectedDiseaseCode].name} — ${filteredCount.toLocaleString()} filtered encounters`)}
                   className="text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-2xl px-4 py-2 font-black transition-all duration-300 cursor-pointer shadow-[0_10px_22px_rgba(37,99,235,0.22)]"
                 >
                   View Patient Log
@@ -207,8 +206,8 @@ export default function AnalyticsCharts({ onShowEncounters, disease, setDisease 
             <p className="text-sm text-slate-600 max-w-md">{notApplicableReason}</p>
           </div>
         ) : (
-          <div key={`${active}-${disease}`} className="flex-1 min-h-[360px] analytics-chart-frame animate-chartIn">
-            <ChartRenderer chartId={active} disease={disease} dateFilter={dateFilter} onShowEncounters={onShowEncounters} />
+          <div key={`${active}-${filters.diagnosis}-${filters.date.preset}-${filters.date.start}-${filters.date.end}-${filters.severity.join("-")}-${filters.origin.join("-")}-${filters.gender.join("-")}-${filters.atolls.join("-")}-${filters.facilities.join("-")}-${filters.outcomes.join("-")}`} className="flex-1 min-h-[360px] analytics-chart-frame animate-chartIn">
+            <ChartRenderer chartId={active} filters={filters} onShowEncounters={onShowEncounters} />
           </div>
         )}
       </div>
@@ -216,106 +215,204 @@ export default function AnalyticsCharts({ onShowEncounters, disease, setDisease 
   );
 }
 
-function DiseaseFilter({ disease, onChange }: { disease: DiseaseCode | "all"; onChange: (value: DiseaseCode | "all") => void }) {
+function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilterState; onChange: (next: AnalyticsFilterState) => void }) {
   const [open, setOpen] = useState(false);
-  const selected = disease === "all" ? null : DISEASE_BY_CODE[disease];
+  const [query, setQuery] = useState("");
+  const [draft, setDraft] = useState<AnalyticsFilterState>(filters);
+
+  useEffect(() => {
+    if (open) setDraft(filters);
+  }, [open, filters]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  const activeCount = countAnalyticsFilters(filters);
+  const selected = filters.diagnosis === "all" ? null : DISEASE_BY_CODE[filters.diagnosis];
+  const visibleDiseases = DISEASES.filter((item) => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return true;
+    return `${item.name} ${item.icd10} ${item.category}`.toLowerCase().includes(normalized);
+  });
+
+  const toggleList = <T extends string,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+  const dateSummary = formatDateSummary(filters.date);
+
   return (
-    <div className="relative" title={selected?.name ?? "All diseases"}>
-      <button onClick={() => setOpen((value) => !value)} className="analytics-filter-pill cursor-pointer text-left">
+    <>
+      <button onClick={() => setOpen(true)} className="analytics-filter-pill min-w-[360px] cursor-pointer text-left">
         <span className="analytics-filter-button relative">
           <ShieldCheck className="h-7 w-7 text-blue-600" />
           <Filter className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-blue-600 p-0.5 text-white shadow-lg" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[9px] font-black uppercase tracking-wider text-blue-600">Diagnosis</span>
-          <span className="block w-44 truncate text-xs font-black text-slate-800">{selected?.name ?? "All diseases"}</span>
+          <span className="block text-[9px] font-black uppercase tracking-wider text-blue-600">Diagnosis & filters</span>
+          <span className="block truncate text-xs font-black text-slate-800">{selected?.name ?? "All diseases"}</span>
+          <span className="block truncate text-[10px] font-semibold text-slate-400">{dateSummary}{activeCount > 1 ? ` · ${activeCount - 1} more filters` : ""}</span>
         </span>
+        {activeCount > 0 && <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">{activeCount}</span>}
         <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
+
       {open && (
-        <div className="analytics-popover w-[420px]">
-          <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400">
-            <Search className="h-3.5 w-3.5" /> Diagnosis library
-          </div>
-          <div className="grid max-h-80 grid-cols-1 gap-1 overflow-y-auto p-2">
-            <button onClick={() => { onChange("all"); setOpen(false); }} className={`analytics-choice ${disease === "all" ? "is-selected" : ""}`}>
-              <span>All diseases</span>{disease === "all" && <Check className="h-4 w-4" />}
-            </button>
-            {DISEASES.map((item) => (
-              <button key={item.code} onClick={() => { onChange(item.code); setOpen(false); }} className={`analytics-choice ${disease === item.code ? "is-selected" : ""}`}>
-                <span><strong>{item.name}</strong><small>{item.icd10} - {item.category}</small></span>{disease === item.code && <Check className="h-4 w-4" />}
-              </button>
-            ))}
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-6xl max-h-[88vh] overflow-hidden rounded-[32px] border border-white/80 bg-white/96 shadow-[0_40px_120px_rgba(15,23,42,0.26)]" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/60 to-cyan-50/50 px-6 py-5">
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-blue-600"><SlidersHorizontal className="h-3.5 w-3.5" /> Analytics filter popup</div>
+                <h3 className="text-2xl font-black tracking-tight text-slate-950">Diagnosis, date, and cohort controls</h3>
+                <p className="text-xs text-slate-500">One popup surface for analytics. No side drawer, no leaking header filter button.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setDraft(DEFAULT_ANALYTICS_FILTERS)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer">Reset</button>
+                <button onClick={() => { onChange(draft); setOpen(false); }} className="rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2 text-xs font-black text-white shadow-[0_14px_28px_rgba(37,99,235,0.24)] cursor-pointer">Apply</button>
+                <button onClick={() => setOpen(false)} className="rounded-2xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"><X className="h-5 w-5" /></button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] max-h-[calc(88vh-92px)] overflow-hidden">
+              <div className="border-r border-slate-100 bg-slate-50/70 p-5 overflow-y-auto">
+                <SectionTitle icon={Search} title="Diagnosis library" detail="Choose one disease focus or leave the full stack visible." />
+                <label className="mt-3 flex items-center gap-2 rounded-2xl border border-white/80 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                  <Search className="h-4 w-4 text-slate-400" />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ICD-10, category, disease..." className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400" />
+                </label>
+                <div className="mt-3 grid gap-2">
+                  <button onClick={() => setDraft({ ...draft, diagnosis: "all" })} className={`analytics-choice ${draft.diagnosis === "all" ? "is-selected" : ""}`}>
+                    <span><strong>All diseases</strong><small>National stack across all tracked disease groups</small></span>{draft.diagnosis === "all" && <Check className="h-4 w-4" />}
+                  </button>
+                  {visibleDiseases.map((item) => (
+                    <button key={item.code} onClick={() => setDraft({ ...draft, diagnosis: item.code })} className={`analytics-choice ${draft.diagnosis === item.code ? "is-selected" : ""}`}>
+                      <span><strong>{item.name}</strong><small>{item.icd10} · {item.category}</small></span>{draft.diagnosis === item.code && <Check className="h-4 w-4" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-5 overflow-y-auto">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+                    <SectionTitle icon={CalendarDays} title="Signal window" detail="Choose a recent window or enter a custom date range." />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {DATE_PRESETS.map((preset) => (
+                        <button key={preset.value} onClick={() => setDraft({ ...draft, date: { preset: preset.value, start: "", end: "" } })} className={`rounded-full px-3 py-1.5 text-[11px] font-black transition-all cursor-pointer ${draft.date.preset === preset.value ? "bg-blue-600 text-white shadow-[0_8px_16px_rgba(37,99,235,0.22)]" : "bg-slate-100 text-slate-600 hover:text-slate-950"}`}>{preset.label}</button>
+                      ))}
+                      <button onClick={() => setDraft({ ...draft, date: { ...draft.date, preset: "custom" } })} className={`rounded-full px-3 py-1.5 text-[11px] font-black transition-all cursor-pointer ${draft.date.preset === "custom" ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600 hover:text-slate-950"}`}>Custom</button>
+                    </div>
+                    {draft.date.preset === "custom" && (
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <label className="analytics-date-field"><span>From</span><input value={draft.date.start} onChange={(event) => setDraft({ ...draft, date: { ...draft.date, preset: "custom", start: event.target.value } })} placeholder="2026-05-01" /></label>
+                        <label className="analytics-date-field"><span>To</span><input value={draft.date.end} onChange={(event) => setDraft({ ...draft, date: { ...draft.date, preset: "custom", end: event.target.value } })} placeholder="2026-05-20" /></label>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+                    <SectionTitle icon={ShieldCheck} title="Severity" detail="Multi-select acuity tiers for the analytics cohort." />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(["mild", "moderate", "severe", "critical"] as PatientEncounter["severity"][]).map((option) => (
+                        <FilterToken key={option} active={draft.severity.includes(option)} onClick={() => setDraft({ ...draft, severity: toggleList(draft.severity, option) })}>{option}</FilterToken>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+                    <SectionTitle icon={UserRound} title="Origin and gender" detail="Keep the cohort split tidy without fragmenting the layout." />
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">Origin</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(["local", "foreign"] as PatientEncounter["origin"][]).map((option) => (
+                            <FilterToken key={option} active={draft.origin.includes(option)} onClick={() => setDraft({ ...draft, origin: toggleList(draft.origin, option) })}>{option}</FilterToken>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">Gender</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(["F", "M"] as PatientEncounter["gender"][]).map((option) => (
+                            <FilterToken key={option} active={draft.gender.includes(option)} onClick={() => setDraft({ ...draft, gender: toggleList(draft.gender, option) })}>{option === "F" ? "Female" : "Male"}</FilterToken>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+                    <SectionTitle icon={Activity} title="Outcome" detail="Optional post-care state filters for recovery and escalation views." />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {(["active", "recovered", "referred", "deceased"] as PatientEncounter["outcome"][]).map((option) => (
+                        <FilterToken key={option} active={draft.outcomes.includes(option)} onClick={() => setDraft({ ...draft, outcomes: toggleList(draft.outcomes, option) })}>{option}</FilterToken>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+                    <SectionTitle icon={MapPin} title="Atoll" detail="Apply region filters without dropping into a side drawer." />
+                    <div className="mt-3 grid grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                      {Object.entries(ATOLL_POPULATIONS).map(([atollName, population]) => (
+                        <button key={atollName} onClick={() => setDraft({ ...draft, atolls: toggleList(draft.atolls, atollName) })} className={`rounded-2xl border px-3 py-2 text-left transition-all cursor-pointer ${draft.atolls.includes(atollName) ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600 hover:text-slate-950"}`}>
+                          <span className="block text-sm font-black">{atollName}</span>
+                          <span className="block text-[10px] font-semibold opacity-70">{population.toLocaleString()} pop.</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+                    <SectionTitle icon={Activity} title="Facility" detail="Target one or more hospitals or centres." />
+                    <div className="mt-3 grid gap-2 max-h-60 overflow-y-auto pr-1">
+                      {FACILITIES.map((facility) => (
+                        <button key={facility.id} onClick={() => setDraft({ ...draft, facilities: toggleList(draft.facilities, facility.id) })} className={`rounded-2xl border px-3 py-2 text-left transition-all cursor-pointer ${draft.facilities.includes(facility.id) ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600 hover:text-slate-950"}`}>
+                          <span className="block text-sm font-black">{facility.shortName}</span>
+                          <span className="block text-[10px] font-semibold opacity-70">{facility.atoll} · {facility.type}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-function DateFilterControl({ value, onChange }: { value: AnalyticsDateFilter; onChange: (value: AnalyticsDateFilter) => void }) {
-  const setPreset = (preset: DatePreset) => onChange({ ...value, preset, start: "", end: "" });
-  const setCustom = (part: "start" | "end", next: string) => onChange({ ...value, preset: "custom", [part]: next });
-
+function SectionTitle({ icon: Icon, title, detail }: { icon: React.ComponentType<{ className?: string }>; title: string; detail: string }) {
   return (
-    <div className="analytics-date-filter">
-      <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-blue-600">
-        <CalendarDays className="h-3.5 w-3.5" /> Signal window
-      </div>
-      <div className="flex items-center gap-1 flex-wrap">
-        {DATE_PRESETS.map((preset) => (
-          <button
-            key={preset.value}
-            onClick={() => setPreset(preset.value)}
-            className={`rounded-full px-2.5 py-1 text-[10px] font-black transition-all cursor-pointer ${value.preset === preset.value ? "bg-blue-600 text-white shadow-[0_8px_16px_rgba(37,99,235,0.22)]" : "bg-white/70 text-slate-500 hover:text-slate-900"}`}
-          >
-            {preset.label}
-          </button>
-        ))}
-        <button onClick={() => onChange({ ...value, preset: "custom" })} className={`rounded-full px-2.5 py-1 text-[10px] font-black transition-all cursor-pointer ${value.preset === "custom" ? "bg-slate-950 text-white" : "bg-white/70 text-slate-500 hover:text-slate-900"}`}>Custom</button>
-        <button onClick={() => onChange(DEFAULT_DATE_FILTER)} className="rounded-full bg-white/70 p-1.5 text-slate-500 hover:text-slate-950 cursor-pointer" title="Reset date filter">
-          <RotateCcw className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      {value.preset === "custom" && (
-        <div className="grid grid-cols-2 gap-2">
-          <label className="analytics-date-field"><span>From</span><input value={value.start} onChange={(event) => setCustom("start", event.target.value)} placeholder="2026-05-01" /></label>
-          <label className="analytics-date-field"><span>To</span><input value={value.end} onChange={(event) => setCustom("end", event.target.value)} placeholder="2026-05-20" /></label>
-        </div>
-      )}
+    <div>
+      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-blue-600"><Icon className="h-3.5 w-3.5" /> {title}</div>
+      <p className="mt-1 text-xs text-slate-500">{detail}</p>
     </div>
   );
 }
 
-function dateFilterToBounds(filter: AnalyticsDateFilter) {
-  if (filter.preset === "all") return { start: "", end: "" };
-  if (filter.preset === "custom") return { start: filter.start, end: filter.end };
-  const latestDate = encountersFor("all").reduce((latest, encounter) => encounter.onsetDate > latest ? encounter.onsetDate : latest, "2026-05-20");
-  const latest = new Date(`${latestDate}T00:00:00Z`);
-  const days = filter.preset === "last7" ? 7 : filter.preset === "last14" ? 14 : 30;
-  const start = new Date(latest.getTime() - (days - 1) * 86400000);
-  return { start: start.toISOString().slice(0, 10), end: latest.toISOString().slice(0, 10) };
+function FilterToken({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button onClick={onClick} className={`rounded-full px-3 py-1.5 text-[11px] font-black transition-all cursor-pointer ${active ? "bg-blue-600 text-white shadow-[0_8px_16px_rgba(37,99,235,0.22)]" : "bg-slate-100 text-slate-600 hover:text-slate-950"}`}>{children}</button>;
 }
 
-function dateFilterToEncounterFilter(filter: AnalyticsDateFilter): Partial<PatientEncounter> | undefined {
-  const bounds = dateFilterToBounds(filter);
+function formatDateSummary(value: AnalyticsDateFilter) {
+  if (value.preset === "all") return "All dates";
+  if (value.preset === "custom") return `${value.start || "…"} → ${value.end || "…"}`;
+  return DATE_PRESETS.find((preset) => preset.value === value.preset)?.label ?? "Date range";
+}
+
+function dateFilterToEncounterFilter(filters: AnalyticsFilterState): Partial<PatientEncounter> | undefined {
+  const bounds = analyticsDateBounds(filters.date);
   if (!bounds.start && !bounds.end) return undefined;
   return { onsetDate: `${bounds.start || "..."}|${bounds.end || "..."}` } as Partial<PatientEncounter>;
 }
 
-function isDateInBounds(date: string, filter: AnalyticsDateFilter) {
-  const bounds = dateFilterToBounds(filter);
-  if (bounds.start && date < bounds.start) return false;
-  if (bounds.end && date > bounds.end) return false;
-  return true;
-}
-
-function filterEncountersByDate(list: PatientEncounter[], filter: AnalyticsDateFilter) {
-  return list.filter((encounter) => isDateInBounds(encounter.onsetDate, filter));
-}
-
 function filterWeeklyRows<T extends { week: string }>(rows: T[], filter: AnalyticsDateFilter) {
-  const filtered = rows.filter((row) => isDateInBounds(weekToDate(row.week), filter));
+  const filtered = rows.filter((row) => isDateInAnalyticsBounds(weekToDate(row.week), filter));
   return filtered.length > 0 ? filtered : rows;
 }
 
@@ -326,7 +423,7 @@ function weekToDate(week: string) {
 }
 
 function dateRangeDays(filter: AnalyticsDateFilter) {
-  const bounds = dateFilterToBounds(filter);
+  const bounds = analyticsDateBounds(filter);
   if (!bounds.start || !bounds.end) return [];
   const start = new Date(`${bounds.start}T00:00:00Z`);
   const end = new Date(`${bounds.end}T00:00:00Z`);
@@ -337,10 +434,11 @@ function dateRangeDays(filter: AnalyticsDateFilter) {
   return days;
 }
 
-function buildDailyDiseaseRows(filter: AnalyticsDateFilter) {
-  const days = dateRangeDays(filter);
+function buildDailyDiseaseRows(filters: AnalyticsFilterState) {
+  const days = dateRangeDays(filters.date);
   if (days.length === 0) return [];
-  const encounters = filterEncountersByDate(encountersFor("all"), filter);
+  const scope = filters.diagnosis === "all" ? encountersFor("all") : encountersFor(filters.diagnosis);
+  const encounters = filterAnalyticsEncounters(scope, filters);
   return days.map((date) => {
     const row: { date: string; day: string } & Record<string, number | string> = { date, day: date.slice(5) };
     for (const disease of DISEASES.slice(0, 10)) {
@@ -350,10 +448,10 @@ function buildDailyDiseaseRows(filter: AnalyticsDateFilter) {
   });
 }
 
-function buildDailyCaseRows(disease: DiseaseCode, filter: AnalyticsDateFilter) {
-  const days = dateRangeDays(filter);
+function buildDailyCaseRows(disease: DiseaseCode, filters: AnalyticsFilterState) {
+  const days = dateRangeDays(filters.date);
   if (days.length === 0) return [];
-  const encounters = filterEncountersByDate(encountersFor(disease), filter);
+  const encounters = filterAnalyticsEncounters(encountersFor(disease), { ...filters, diagnosis: disease });
   return days.map((date) => {
     const cases = encounters.filter((encounter) => encounter.onsetDate === date).length;
     return { date, day: date.slice(5), cases, newCases: cases };
@@ -365,19 +463,19 @@ function buildDailyCaseRows(disease: DiseaseCode, filter: AnalyticsDateFilter) {
 /* ------------------------------------------------------------------ */
 function ChartRenderer({
   chartId,
-  disease,
-  dateFilter,
+  filters,
   onShowEncounters,
 }: {
   chartId: ChartId;
-  disease: DiseaseCode | "all";
-  dateFilter: AnalyticsDateFilter;
+  filters: AnalyticsFilterState;
   onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void;
 }) {
-  const encounters = useMemo(() => filterEncountersByDate(encountersFor(disease), dateFilter), [disease, dateFilter]);
+  const disease = filters.diagnosis;
+  const dateFilter = filters.date;
+  const encounters = useMemo(() => filterAnalyticsEncounters(encountersFor(disease), filters), [disease, filters]);
 
   if (chartId === "weekly_trend") {
-    const dailyData = buildDailyDiseaseRows(dateFilter);
+    const dailyData = buildDailyDiseaseRows(filters);
     if (dailyData.length > 0) {
       return (
         <ResponsiveContainer width="100%" height="100%" minWidth={300}>
@@ -419,7 +517,7 @@ function ChartRenderer({
   }
 
   if (chartId === "incidence") {
-    const dailyData = buildDailyCaseRows(disease as DiseaseCode, dateFilter);
+    const dailyData = buildDailyCaseRows(disease as DiseaseCode, filters);
     const data = dailyData.length > 0 ? dailyData : filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
     return <SimpleBar data={data} xKey={dailyData.length > 0 ? "day" : "week"} bars={[{ key: "cases", color: "#2563eb", name: "Cases" }, { key: "newCases", color: "#dc2626", name: "New" }]} />;
   }

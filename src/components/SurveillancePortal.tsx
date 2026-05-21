@@ -19,13 +19,18 @@ import {
   type DashboardSummary, type DiseaseCode, type FacilityStatus, type IncidentEvent,
   type LogEntry, type PatientEncounter, type ReportMeta,
 } from "@/lib/surveillance-api";
+import {
+  DEFAULT_ANALYTICS_FILTERS,
+  analyticsFiltersToEncounterLogFilter,
+  filterAnalyticsEncounters,
+  type AnalyticsFilterState,
+  type EncounterLogFilter,
+} from "@/lib/analytics-filters";
 
 const SurveillanceMap = dynamic(() => import("@/components/surveillance/SurveillanceMap"), { ssr: false });
 const AnalyticsCharts = dynamic(() => import("@/components/surveillance/AnalyticsCharts"), { ssr: false });
 const EncounterLog = dynamic(() => import("@/components/surveillance/EncounterLog"), { ssr: false });
 const ReportViewer = dynamic(() => import("@/components/surveillance/ReportViewer"), { ssr: false });
-const FilterStudio = dynamic(() => import("@/components/surveillance/FilterStudio"), { ssr: false });
-import { EMPTY_FILTERS, type FilterStudioValue } from "@/components/surveillance/FilterStudio";
 
 type SidebarView = "dashboard" | "map" | "analytics" | "outbreaks" | "patients" | "foreignAudit" | "fetching" | "logging" | "reports";
 type IntakeScope = "24h" | "seeded" | "critical" | "foreign";
@@ -90,7 +95,7 @@ const logLevelStyles = {
 
 interface EncounterLogRequest {
   disease: DiseaseCode | "all";
-  filter?: Partial<PatientEncounter>;
+  filter?: EncounterLogFilter;
   label?: string;
 }
 
@@ -102,31 +107,20 @@ function formatMvtTime() {
 export default function SurveillancePortal() {
   const [view, setView] = useState<SidebarView>("dashboard");
   const [summary] = useState<DashboardSummary | null>(() => fetchDashboardSummary());
-  const [incidents, setIncidents] = useState<IncidentEvent[]>(() => Array.from({ length: 14 }, () => generateIncident()));
-  const [logs] = useState<LogEntry[]>(() => generateSystemLogs());
+  const [incidents, setIncidents] = useState<IncidentEvent[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [currentTime, setCurrentTime] = useState("--:--:--");
   const [selectedFacility, setSelectedFacility] = useState<FacilityStatus | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [encounterLog, setEncounterLog] = useState<EncounterLogRequest | null>(null);
   const [selectedReport, setSelectedReport] = useState<ReportMeta | null>(null);
-  const [analyticsDisease, setAnalyticsDisease] = useState<DiseaseCode | "all">("all");
-  const [filterStudioOpen, setFilterStudioOpen] = useState(false);
-  const [globalFilters, setGlobalFilters] = useState<FilterStudioValue>(EMPTY_FILTERS);
-  const activeFilterCount = useMemo(() => {
-    let count = 0;
-    if (globalFilters.diagnosis !== "all") count++;
-    count += globalFilters.severity.length;
-    count += globalFilters.origin.length;
-    count += globalFilters.gender.length;
-    count += globalFilters.atolls.length;
-    count += globalFilters.facilities.length;
-    if (globalFilters.dateStart || globalFilters.dateEnd) count++;
-    return count;
-  }, [globalFilters]);
-
-  useEffect(() => { if (globalFilters.diagnosis !== "all") setAnalyticsDisease(globalFilters.diagnosis); }, [globalFilters.diagnosis]);
+  const [analyticsFilters, setAnalyticsFilters] = useState<AnalyticsFilterState>(DEFAULT_ANALYTICS_FILTERS);
 
   useEffect(() => {
+    setCurrentTime(formatMvtTime());
+    setIncidents(Array.from({ length: 14 }, () => generateIncident()));
+    setLogs(generateSystemLogs());
+
     const id = setInterval(() => {
       setCurrentTime(formatMvtTime());
     }, 1000);
@@ -141,8 +135,9 @@ export default function SurveillancePortal() {
   }, []);
 
   const liveEncounters = useMemo(() => {
-    return encountersFor(view === "analytics" ? analyticsDisease : "all");
-  }, [view, analyticsDisease]);
+    if (view !== "analytics") return encountersFor("all");
+    return filterAnalyticsEncounters(encountersFor(analyticsFilters.diagnosis), analyticsFilters);
+  }, [view, analyticsFilters]);
 
   const headerStats = useMemo(() => {
     if (view === "analytics") {
@@ -161,8 +156,11 @@ export default function SurveillancePortal() {
 
   if (!summary) return null;
 
-  const showEncounters = (disease: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => {
-    setEncounterLog({ disease, filter, label });
+  const showEncounters = (disease: DiseaseCode | "all", filter?: EncounterLogFilter, label?: string) => {
+    const mergedFilter = view === "analytics"
+      ? { ...analyticsFiltersToEncounterLogFilter(analyticsFilters), ...(filter ?? {}) }
+      : filter;
+    setEncounterLog({ disease, filter: mergedFilter, label });
   };
 
   return (
@@ -215,19 +213,6 @@ export default function SurveillancePortal() {
             <h1 className="text-xl font-black text-slate-950 tracking-tight">{NAV_ITEMS.find((item) => item.id === view)?.label ?? "Command Dashboard"}</h1>
             <p className="text-xs text-slate-500">Ministry of Health - Maldives disease identification and surveillance</p>
           </div>
-          {view === "analytics" && (
-            <div className="flex items-center gap-2 animate-fadeIn">
-              <button
-                onClick={() => setFilterStudioOpen(true)}
-                className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 px-3.5 py-2 text-xs font-black text-blue-700 hover:from-blue-100 hover:to-cyan-100 shadow-[0_10px_22px_rgba(37,99,235,0.14)] cursor-pointer"
-                title="Open the global Filter Studio"
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                <span>Filter studio</span>
-                {activeFilterCount > 0 && <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">{activeFilterCount}</span>}
-              </button>
-            </div>
-          )}
           <div className="hidden xl:flex items-center gap-2 animate-fadeIn">
             {headerStats ? (
               <>
@@ -252,8 +237,8 @@ export default function SurveillancePortal() {
           {view === "analytics" && (
             <AnalyticsCharts
               onShowEncounters={showEncounters}
-              disease={analyticsDisease}
-              setDisease={setAnalyticsDisease}
+              filters={analyticsFilters}
+              onFiltersChange={setAnalyticsFilters}
             />
           )}
           {view === "outbreaks" && <OutbreaksView onShowEncounters={showEncounters} />}
@@ -261,11 +246,10 @@ export default function SurveillancePortal() {
           {view === "foreignAudit" && <ForeignAuditView onShowEncounters={showEncounters} />}
           {view === "fetching" && <LiveFetchingView onShowEncounters={showEncounters} />}
           {view === "logging" && <LoggingView logs={logs} />}
-          {view === "reports" && <ReportsView onOpen={setSelectedReport} globalFilters={globalFilters} />}
+          {view === "reports" && <ReportsView onOpen={setSelectedReport} analyticsFilters={analyticsFilters} />}
         </main>
       </div>
 
-      <FilterStudio open={filterStudioOpen} value={globalFilters} onApply={(next) => { setGlobalFilters(next); setFilterStudioOpen(false); }} onClose={() => setFilterStudioOpen(false)} />
       {selectedFacility && <FacilityOverlay facility={selectedFacility} onClose={() => setSelectedFacility(null)} onShowEncounters={showEncounters} />}
       {encounterLog && <EncounterLog disease={encounterLog.disease} filter={encounterLog.filter} label={encounterLog.label} onClose={() => setEncounterLog(null)} />}
       {selectedReport && <ReportViewer meta={selectedReport} onClose={() => setSelectedReport(null)} />}
@@ -992,7 +976,7 @@ function LiveOpenRouterProbe() {
         <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-emerald-600" /><p className="text-sm font-black text-slate-800">Live OpenRouter probe</p></div>
         <button onClick={runProbe} disabled={running} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">{running ? "Running…" : "Run on 1 episode"}</button>
       </div>
-      <p className="text-[11px] text-slate-500 mb-2">Pulls one Vinavi episode, redacts PHI, runs the ensemble, and shows agreement plus which fields were stripped.</p>
+      <p className="text-[11px] text-slate-500 mb-2">Pulls one Vinavi episode, applies irreversible suppression plus local k-anonymity generalization, runs the three OpenRouter layers, and shows which fields were stripped.</p>
       {result?.error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700">{result.error}</p>}
       {result?.audit && (
         <div className="space-y-2 text-[11px]">
@@ -1046,7 +1030,7 @@ function LoggingView({ logs }: { logs: LogEntry[] }) {
   );
 }
 
-function ReportsView({ onOpen, globalFilters }: { onOpen: (report: ReportMeta) => void; globalFilters: FilterStudioValue }) {
+function ReportsView({ onOpen, analyticsFilters }: { onOpen: (report: ReportMeta) => void; analyticsFilters: AnalyticsFilterState }) {
   type GeneratedRun = {
     meta: ReportMeta;
     markdown: string;
@@ -1060,10 +1044,10 @@ function ReportsView({ onOpen, globalFilters }: { onOpen: (report: ReportMeta) =
   const [openMd, setOpenMd] = useState<GeneratedRun | null>(null);
 
   const modelChain = [
-    { name: "OpenRouter Clinical", role: "clinical extraction via free Llama-3.3 / Qwen 2.5 / Gemma 2", icon: Stethoscope, tone: "emerald" as const },
-    { name: "DeepSeek R1", role: "reasoning + contradiction checks (free tier)", icon: BrainCircuit, tone: "blue" as const },
-    { name: "Hermes / Mistral", role: "second-opinion ensemble vote", icon: Microscope, tone: "violet" as const },
-    { name: "MV-AIHA Router", role: "majority vote, PHI guard, markdown synthesis", icon: Bot, tone: "amber" as const },
+    { name: "The Matrix Compiler", role: "deepseek/deepseek-v4-flash:free — processes raw JSON blocks and maps signal geometry", icon: Stethoscope, tone: "emerald" as const },
+    { name: "The Outbreak Synthesizer", role: "openai/gpt-oss-120b:free — clusters symptom streams into a single outbreak picture", icon: BrainCircuit, tone: "blue" as const },
+    { name: "The Command Briefing Engine", role: "google/gemma-4-31b-it:free — writes the ministerial command brief", icon: Microscope, tone: "violet" as const },
+    { name: "MV-AIHS Guard Rail", role: "local suppression, k-anonymity checks, routing, and release control", icon: Bot, tone: "amber" as const },
   ];
 
   const handleGenerate = async () => {
@@ -1075,8 +1059,8 @@ function ReportsView({ onOpen, globalFilters }: { onOpen: (report: ReportMeta) =
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           template,
-          diseaseCode: globalFilters.diagnosis,
-          facilityId: globalFilters.facilities[0],
+          diseaseCode: analyticsFilters.diagnosis,
+          facilityId: analyticsFilters.facilities[0],
           sampleSize: 4,
         }),
       });
@@ -1114,7 +1098,7 @@ function ReportsView({ onOpen, globalFilters }: { onOpen: (report: ReportMeta) =
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Live generator</p>
             <h2 className="text-xl font-black tracking-tight text-slate-950">Generate a privacy-safe surveillance report</h2>
-            <p className="text-xs text-slate-500 max-w-xl">Pulls live signal from {globalFilters.diagnosis === "all" ? "all 10 tracked diseases" : DISEASE_BY_CODE[globalFilters.diagnosis].name}{globalFilters.facilities[0] ? ` at ${FACILITIES.find((facility) => facility.id === globalFilters.facilities[0])?.shortName}` : ""}, redacts every patient through <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">src/lib/redact.ts</code>, then sends only de-identified clinical text to an ensemble of 5+ free OpenRouter models. Majority vote suppresses single-model hallucination.</p>
+            <p className="text-xs text-slate-500 max-w-xl">Pulls live signal from {analyticsFilters.diagnosis === "all" ? "all 10 tracked diseases" : DISEASE_BY_CODE[analyticsFilters.diagnosis].name}{analyticsFilters.facilities[0] ? ` at ${FACILITIES.find((facility) => facility.id === analyticsFilters.facilities[0])?.shortName}` : ""}, redacts every patient through <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">src/lib/redact.ts</code>, then sends only de-identified clinical text into the three-layer OpenRouter stack configured for MV-AIHS.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {(["daily", "weekly", "outbreak", "facility", "foreign"] as const).map((option) => (

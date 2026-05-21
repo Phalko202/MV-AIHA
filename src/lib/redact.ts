@@ -5,12 +5,15 @@
 /*  before they leave the MV-AIHA perimeter for any third-party AI     */
 /*  model (OpenRouter, etc.). The function:                            */
 /*    - Drops direct identifiers (name, address, phone, IDs, DOB)      */
-/*    - Converts dateOfBirth → ageYears, then deletes dateOfBirth      */
+/*    - Suppresses exact DOB and generalizes age to a band             */
+/*    - Generalizes atoll/facility to regional/tier buckets            */
+/*    - Applies local k-anonymity support scoring on quasi-identifiers */
 /*    - Sweeps clinician free-text for common identifier patterns       */
 /*    - Returns an audit record (removedFields + sha256 hash of raw)   */
 /* ------------------------------------------------------------------ */
 
 import { createHash } from "crypto";
+import { FACILITIES, encountersFor } from "@/lib/surveillance-api";
 
 const DIRECT_IDENTIFIER_FIELDS = [
   "name",
@@ -60,14 +63,15 @@ export interface RedactionAudit {
   redactedTextSpans: number;
   sourceHash: string;
   redactedAt: string;
+  kAnonymitySupport: number;
 }
 
 export interface RedactedEpisode {
-  ageYears?: number;
+  ageBand?: string;
   gender?: string;
   cohort?: "local" | "foreign";
-  atoll?: string;
-  facilityId?: string;
+  regionCluster?: string;
+  facilityTier?: string;
   facilityType?: string;
   onsetDate?: string;
   admissionDate?: string;
@@ -80,6 +84,7 @@ export interface RedactedEpisode {
   source?: string;
   severity?: string;
   outcome?: string;
+  kAnonymitySupport?: number;
   [key: string]: unknown;
 }
 
@@ -94,6 +99,44 @@ function calcAgeYears(dob: string): number | undefined {
   const diffMs = Date.now() - ts;
   if (diffMs < 0) return undefined;
   return Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000));
+}
+
+function ageBandForValue(ageYears: number | undefined, ageBracket: unknown): string | undefined {
+  if (typeof ageBracket === "string" && ageBracket.trim()) return ageBracket;
+  if (typeof ageYears !== "number") return undefined;
+  if (ageYears <= 4) return "0-4";
+  if (ageYears <= 9) return "5-9";
+  if (ageYears <= 19) return "10-19";
+  if (ageYears <= 29) return "20-29";
+  if (ageYears <= 39) return "30-39";
+  if (ageYears <= 49) return "40-49";
+  if (ageYears <= 59) return "50-59";
+  if (ageYears <= 69) return "60-69";
+  return "70+";
+}
+
+function atollToRegion(atoll: unknown): string | undefined {
+  if (typeof atoll !== "string" || !atoll.trim()) return undefined;
+  if (["Haa Dhaalu", "Raa"].includes(atoll)) return "north-region";
+  if (["Kaafu", "Meemu"].includes(atoll)) return "central-region";
+  if (["Laamu", "Gaafu Dhaalu", "Addu", "Gnaviyani"].includes(atoll)) return "south-region";
+  return "outer-atolls";
+}
+
+function facilityTierFor(facilityId: unknown, facilityType: unknown): string | undefined {
+  if (typeof facilityType === "string" && facilityType.trim()) return facilityType;
+  if (typeof facilityId !== "string") return undefined;
+  return FACILITIES.find((facility) => facility.id === facilityId)?.type;
+}
+
+function measureKSupport(input: { ageBand?: string; gender?: string; regionCluster?: string; facilityTier?: string }): number {
+  return encountersFor("all").filter((encounter) => {
+    if (input.ageBand && encounter.ageBracket !== input.ageBand) return false;
+    if (input.gender && encounter.gender !== input.gender) return false;
+    if (input.regionCluster && atollToRegion(encounter.atoll) !== input.regionCluster) return false;
+    if (input.facilityTier && facilityTierFor(encounter.facilityId, undefined) !== input.facilityTier) return false;
+    return true;
+  }).length;
 }
 
 /**
@@ -144,6 +187,7 @@ export function redactPatientEpisode(episode: Record<string, unknown>): Redactio
   const removed: string[] = [];
   const out: RedactedEpisode = {};
   let textSpans = 0;
+  let derivedAgeYears: number | undefined;
 
   // SHA-256 of the raw input for audit chain (does NOT leave the server)
   const sourceHash = createHash("sha256")
@@ -160,13 +204,16 @@ export function redactPatientEpisode(episode: Record<string, unknown>): Redactio
   for (const dobField of DOB_FIELDS) {
     if (dobField in episode) {
       const age = calcAgeYears(String(episode[dobField] ?? ""));
-      if (age !== undefined && out.ageYears === undefined) out.ageYears = age;
+      if (age !== undefined && derivedAgeYears === undefined) derivedAgeYears = age;
       removed.push(dobField);
     }
   }
-  // If an explicit ageYears/age is already present, prefer it but cap at sane range
-  if (typeof episode.ageYears === "number") out.ageYears = Math.max(0, Math.min(120, episode.ageYears));
-  else if (typeof episode.age === "number" && out.ageYears === undefined) out.ageYears = Math.max(0, Math.min(120, episode.age));
+  // If an explicit ageYears/age is already present, use it only to derive a broader age band.
+  if (typeof episode.ageYears === "number") derivedAgeYears = Math.max(0, Math.min(120, episode.ageYears));
+  else if (typeof episode.age === "number" && derivedAgeYears === undefined) derivedAgeYears = Math.max(0, Math.min(120, episode.age));
+  const ageBand = ageBandForValue(derivedAgeYears, episode.ageBracket);
+  if (ageBand) out.ageBand = ageBand;
+  if (derivedAgeYears !== undefined || "age" in episode || "ageYears" in episode) removed.push("age_exact_generalized");
 
   // 3. Gender — keep (per user spec)
   if (typeof episode.gender === "string") out.gender = episode.gender;
@@ -175,9 +222,14 @@ export function redactPatientEpisode(episode: Record<string, unknown>): Redactio
   const cohort = bucketCohort(episode.nationality) ?? bucketCohort(episode.origin);
   if (cohort) out.cohort = cohort;
 
+  const regionCluster = atollToRegion(episode.atoll);
+  if (regionCluster) out.regionCluster = regionCluster;
+  const facilityTier = facilityTierFor(episode.facilityId, episode.facilityType);
+  if (facilityTier) out.facilityTier = facilityTier;
+
   // 5. Clinical signal — keep
   const passthrough = [
-    "atoll", "facilityId", "facilityType", "onsetDate", "admissionDate",
+    "facilityType", "onsetDate", "admissionDate",
     "diagnosis", "diseaseCode", "icd10", "symptoms", "vitals", "prescriptions",
     "severity", "outcome", "source", "aiConfidence",
   ];
@@ -211,6 +263,15 @@ export function redactPatientEpisode(episode: Record<string, unknown>): Redactio
     });
   }
 
+  const kAnonymitySupport = measureKSupport({ ageBand: out.ageBand, gender: out.gender, regionCluster: out.regionCluster, facilityTier: out.facilityTier });
+  out.kAnonymitySupport = kAnonymitySupport;
+  if (kAnonymitySupport < 5) {
+    // Escalate generalization for small cohorts so the external model never sees a rare local combination.
+    delete out.facilityTier;
+    out.regionCluster = out.regionCluster ?? "national";
+    removed.push("facility_tier_suppressed_for_k_anonymity");
+  }
+
   return {
     redacted: out,
     audit: {
@@ -218,6 +279,7 @@ export function redactPatientEpisode(episode: Record<string, unknown>): Redactio
       redactedTextSpans: textSpans,
       sourceHash,
       redactedAt: new Date().toISOString(),
+      kAnonymitySupport,
     },
   };
 }
