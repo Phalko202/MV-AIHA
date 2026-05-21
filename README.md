@@ -5,7 +5,7 @@ MV-AIHA is a Maldives AI Health Analytics portal for disease surveillance, facil
 ## Team And Track
 
 - Team: MV-AIHA
-- Track: Healthcare / Public Health Intelligence
+- Chosen direction: Track A - Healthcare / Public Health Intelligence
 - Repository: https://github.com/Phalko202/MV-AIHA
 
 ## Problem
@@ -19,13 +19,15 @@ Public health teams need a fast way to monitor disease signals across Maldives f
 - Interactive analytics with disease filtering, contextual insight cards, and modern graph surfaces.
 - Patient cohort summaries using de-identified episodes.
 - External patient intelligence for non-local signal review.
-- Live surveillance intake simulation for demo workflows.
+- Live surveillance intake from Vinavi and Foreign source APIs with paused-by-default receiver controls.
+- Batched, paged consultation intake with safe patient stat IDs and full complaints, advice, services, prescriptions, and vitals details.
 - AI-assisted reports with privacy controls and methodology sections.
 - Vinavi EMR demo route for patient-history exploration.
 
 ## Install And Run
 
 ```bash
+cd mv-aihs-portal
 npm install
 npm run dev
 ```
@@ -35,6 +37,7 @@ Open http://localhost:3000 for the surveillance portal.
 Vinavi can be run separately on port 3001:
 
 ```bash
+cd mv-aihs-portal
 npm run dev:vinavi
 ```
 
@@ -136,7 +139,12 @@ If `OPENROUTER_API_KEY` is missing, the ensemble returns `INSUFFICIENT_DATA` wit
 
 ### Endpoints
 
+- `POST /api/vinavi/ingest` — accepts either one consultation object or `{ "consultations": [...] }`. Batches are capped at 5,000 records per request so large demos do not overload the server. The response includes `acceptedCount`, ready/pending totals, safe sequence numbers, store size, and patient count.
+- `GET /api/vinavi/ingest?detail=full&limit=250&offset=0` — returns paged, de-identified Vinavi records. Records expose only `patientStatId`, `episodeSequence`, aggregate-safe demographics, diagnosis/ICD data, grouped clinical sections, and vitals including blood pressure, heart rate, temperature, SpO2, and respiratory rate.
+- `POST /api/foreign/ingest` — body `{ "amount": 25 }`. Generates a Foreign source batch using the same safe event contract.
+- `GET /api/foreign/ingest?detail=full&limit=250&offset=0` — returns paged Foreign source events using the same grouped clinical detail shape as Vinavi.
 - `POST /api/ai/analyze-episode` — body `{ episode }`. Redacts, runs the ensemble, returns `{ redacted, audit, ensemble }`. The unredacted episode is never echoed back.
+- `POST /api/ai/surveillance-feed` — body `{ logs }`. Runs the destructive purge and then the 3-stage OpenRouter surveillance chain over de-identified feed records.
 - `POST /api/reports/generate` — body `{ template, diseaseCode, facilityId, sampleSize }`. Samples episodes, redacts each, runs the ensemble per episode, and composes a markdown surveillance report containing only de-identified figures, the per-episode source hash, and the list of fields that were stripped before any model saw the data.
 
 ### Where to verify

@@ -8,8 +8,9 @@
  * a "pending" state for 20 minutes from their openedAt timestamp. When Vinavi
  * re-sends the same episodeId with content, the record is updated and released.
  *
- * NOTE: This is an in-memory store — data is lost on server restart. For
- * production, replace the Map with a database or Redis.
+ * NOTE: This is a bounded in-memory store for the hackathon demo. Data is lost
+ * on server restart. For high-volume production use, keep this API contract and
+ * replace the Map with PostgreSQL/Redis/queue storage.
  */
 
 export interface VinaviConsultationPayload {
@@ -29,21 +30,54 @@ export interface VinaviConsultationPayload {
   diagnosis: string;
   icd10Code?: string;
   sections: Array<{ type: string; content: string; createdAt: string }>;
-  vitals?: Array<{ timestamp: string; bp?: string; heartRate?: number; temp?: number }>;
+  vitals?: Array<{ timestamp: string; bp?: string; heartRate?: number; temp?: number; spo2?: number; respRate?: number }>;
   origin?: "local" | "foreign";
 }
 
 export interface PendingConsultation {
   payload: VinaviConsultationPayload;
   receivedAt: string;
+  patientStatId: string;
+  episodeSequence: number;
   pendingUntil: string | null;  // null = immediately visible in analytics
   processed: boolean;
 }
 
 const BLANK_HOLD_MS = 20 * 60 * 1000; // 20 minutes
+const MAX_IN_MEMORY_CONSULTATIONS = Math.max(1000, Number(process.env.MV_AIHA_MAX_IN_MEMORY_CONSULTATIONS ?? 50000));
 
 /** Module-level singleton — persists for the lifetime of the Node.js process. */
 const store = new Map<string, PendingConsultation>();
+const insertionOrder: string[] = [];
+const patientStatIds = new Map<string, string>();
+let nextPatientStatNumber = 1;
+let nextEpisodeSequence = 1;
+
+function patientSourceKey(payload: VinaviConsultationPayload) {
+  return `${payload.origin ?? "local"}:${payload.patientId || payload.patientNationalId || "unknown"}`;
+}
+
+function getPatientStatId(payload: VinaviConsultationPayload) {
+  const key = patientSourceKey(payload);
+  const existing = patientStatIds.get(key);
+  if (existing) return existing;
+  const next = `STAT-${nextPatientStatNumber.toString().padStart(6, "0")}`;
+  nextPatientStatNumber += 1;
+  patientStatIds.set(key, next);
+  return next;
+}
+
+function rememberKey(key: string) {
+  if (!store.has(key)) insertionOrder.push(key);
+}
+
+function enforceBoundedStore() {
+  while (store.size > MAX_IN_MEMORY_CONSULTATIONS) {
+    const oldest = insertionOrder.shift();
+    if (!oldest) return;
+    store.delete(oldest);
+  }
+}
 
 /** Determine whether a payload is a blank (placeholder) episode. */
 function isBlankEpisode(payload: VinaviConsultationPayload): boolean {
@@ -72,6 +106,8 @@ export function upsertConsultation(payload: VinaviConsultationPayload): PendingC
     const updated: PendingConsultation = {
       payload,
       receivedAt: existing.receivedAt,
+      patientStatId: existing.patientStatId,
+      episodeSequence: existing.episodeSequence,
       pendingUntil,
       processed: !blank,
     };
@@ -90,11 +126,32 @@ export function upsertConsultation(payload: VinaviConsultationPayload): PendingC
   const record: PendingConsultation = {
     payload,
     receivedAt: now,
+    patientStatId: getPatientStatId(payload),
+    episodeSequence: nextEpisodeSequence,
     pendingUntil,
     processed: !blank,
   };
+  nextEpisodeSequence += 1;
+  rememberKey(payload.episodeId);
   store.set(payload.episodeId, record);
+  enforceBoundedStore();
   return record;
+}
+
+export function upsertConsultations(payloads: VinaviConsultationPayload[]): PendingConsultation[] {
+  return payloads.map((payload) => upsertConsultation(payload));
+}
+
+export function maxStoreSize(): number {
+  return MAX_IN_MEMORY_CONSULTATIONS;
+}
+
+export function patientCount(): number {
+  return patientStatIds.size;
+}
+
+export function latestEpisodeSequence(): number {
+  return nextEpisodeSequence - 1;
 }
 
 /** Returns all consultations that are past their hold window (or were never held). */

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap, LayersControl } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import type { FacilityStatus } from "@/lib/surveillance-api";
@@ -75,54 +75,47 @@ interface Props {
 }
 
 export default function SurveillanceMap({ facilities, onFacilityClick, height = "500px" }: Props) {
-  const [ready, setReady] = useState(false);
-  useEffect(() => { setReady(true); }, []);
-  if (!ready) return <div style={{ height }} className="bg-slate-100 animate-pulse" />;
+  const [mapKey, setMapKey] = useState<string | null>(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setMapKey(`mv-aihs-${Date.now()}`));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  if (!mapKey) return <div style={{ height }} className="mv-map-stage bg-slate-100/70 animate-pulse" />;
 
   return (
-    <MapContainer
-      center={MALDIVES_CENTER}
-      zoom={7}
-      minZoom={6}
-      maxZoom={18}
-      maxBounds={MALDIVES_BOUNDS}
-      maxBoundsViscosity={1.0}
-      style={{ height, width: "100%" }}
-      zoomControl={true}
-      attributionControl={false}
-      worldCopyJump={false}
-    >
-      <LayersControl position="topright">
-        <LayersControl.BaseLayer checked name="Satellite">
-          <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            maxZoom={19}
-          />
-        </LayersControl.BaseLayer>
-        <LayersControl.BaseLayer name="Streets">
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            maxZoom={19}
-          />
-        </LayersControl.BaseLayer>
-        <LayersControl.Overlay checked name="Labels">
-          <TileLayer
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-            maxZoom={19}
-          />
-        </LayersControl.Overlay>
-      </LayersControl>
+    <div className="mv-map-stage" style={{ height }}>
+      <MapContainer
+        key={mapKey}
+        center={MALDIVES_CENTER}
+        zoom={7}
+        minZoom={6}
+        maxZoom={18}
+        maxBounds={MALDIVES_BOUNDS}
+        maxBoundsViscosity={1.0}
+        style={{ height: "100%", width: "100%" }}
+        zoomControl={true}
+        attributionControl={false}
+        worldCopyJump={false}
+      >
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={19}
+        />
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={19}
+        />
 
-      <ConstrainView facilities={facilities} />
+        <ConstrainView facilities={facilities} />
 
-      {facilities.map((f) => {
-        const color = statusColor[f.status];
-        return (
-          <Marker
-            key={f.id}
-            position={[f.lat, f.lng]}
-            icon={facilityPinIcon(f)}
-            eventHandlers={{ click: () => onFacilityClick(f) }}
+        {facilities.map((f) => {
+          const color = statusColor[f.status];
+          return (
+            <Marker
+              key={f.id}
+              position={[f.lat, f.lng]}
+              icon={facilityPinIcon(f)}
+              eventHandlers={{ click: () => onFacilityClick(f) }}
           >
             <Popup>
               <div className="text-xs min-w-[220px]">
@@ -151,9 +144,10 @@ export default function SurveillanceMap({ facilities, onFacilityClick, height = 
                 <p className="mt-2 pt-2 border-t border-slate-200 text-[10px] text-blue-600 font-semibold">Click marker for disease detail</p>
               </div>
             </Popup>
-          </Marker>
-        );
-      })}
-    </MapContainer>
+            </Marker>
+          );
+        })}
+      </MapContainer>
+    </div>
   );
 }

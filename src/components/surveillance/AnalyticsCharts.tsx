@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   ResponsiveContainer,
@@ -169,6 +169,9 @@ export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersCh
   const selectedDiseaseCode = primaryDiseaseCode(filters);
   const selectedDiseaseName = selectedCodes.length === 0 ? "No diagnosis selected" : selectedCodes.length === 1 ? diagnosisDisplay(selectedCodes[0]).name : `${selectedCodes.length} diagnoses selected`;
   const filteredCount = useMemo(() => filterAnalyticsEncounters(encountersFor("all"), filters).length, [filters]);
+  const diseaseScopeCount = selectedCodes.length > 0 ? selectedCodes.length : DISEASES.length;
+  const dateSummary = formatDateSummary(filters.date);
+  const originSummaryLabel = filters.origin.length > 0 ? filters.origin.join(" / ") : "all origin";
   const notApplicableReason =
     chartDef.requiresDisease && !selectedDiseaseCode
       ? selectedCodes.length > 1 ? "Select one specific diagnosis to view this disease-specific chart." : "Select a specific diagnosis above to view this chart."
@@ -179,17 +182,17 @@ export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersCh
   return (
     <div className="flex gap-4 h-[calc(100vh-128px)] min-h-[560px] analytics-surface">
       {/* Chart selector */}
-      <div className="shrink-0 w-64 rounded-3xl border border-white/75 bg-white/68 backdrop-blur-xl p-2.5 overflow-y-auto shadow-[0_18px_48px_rgba(15,23,42,0.08)]">
+      <div className="shrink-0 w-72 rounded-[30px] border border-slate-900/10 bg-slate-950/92 backdrop-blur-xl p-3 overflow-y-auto shadow-[0_24px_70px_rgba(15,23,42,0.20)] analytics-chart-menu">
         {GROUP_ORDER.map((g) => (
           <div key={g} className="mb-2">
-            <p className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400">{g}</p>
+            <p className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-100/55">{g}</p>
             <div className="space-y-0.5">
               {CHARTS.filter((c) => c.group === g).map((c) => (
                 <button
                   key={c.id}
                   onClick={() => setActive(c.id)}
                   className={`w-full text-left px-3 py-2.5 rounded-2xl text-[12px] font-bold transition-all duration-300 cursor-pointer ${
-                    active === c.id ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-[0_12px_24px_rgba(37,99,235,0.22)]" : "text-slate-600 hover:bg-white/80 hover:text-slate-950 hover:translate-x-0.5"
+                    active === c.id ? "bg-gradient-to-r from-blue-600 via-cyan-500 to-teal-400 text-white shadow-[0_14px_30px_rgba(14,165,233,0.30)] ring-1 ring-cyan-100/35" : "text-slate-300 hover:bg-white/10 hover:text-white hover:translate-x-0.5"
                   }`}
                 >
                   {c.label}
@@ -201,7 +204,7 @@ export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersCh
       </div>
 
       {/* Display */}
-      <div className="flex-1 rounded-3xl border border-white/80 bg-white/86 backdrop-blur-xl p-5 overflow-hidden shadow-[0_22px_60px_rgba(15,23,42,0.09)] flex flex-col">
+      <div className="flex-1 rounded-[32px] border border-white/80 bg-white/86 backdrop-blur-xl p-5 overflow-hidden shadow-[0_22px_60px_rgba(15,23,42,0.09)] flex flex-col">
         <div className="analytics-title-block mb-4 rounded-3xl border border-white/80 bg-white/72 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_16px_36px_rgba(15,23,42,0.07)]">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 min-w-0">
@@ -226,6 +229,13 @@ export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersCh
           </div>
         </div>
 
+        <div className="analytics-insight-grid mb-4">
+          <ChartInsight icon={Activity} label="Filtered episodes" value={filteredCount.toLocaleString()} detail="de-identified encounters" tone="analytics-insight-blue" />
+          <ChartInsight icon={ShieldCheck} label="Diagnosis scope" value={diseaseScopeCount.toLocaleString()} detail={selectedCodes.length > 0 ? "selected diagnoses" : "tracked diseases"} tone="analytics-insight-cyan" />
+          <ChartInsight icon={CalendarDays} label="Signal window" value={dateSummary} detail="date filter" tone="analytics-insight-violet" />
+          <ChartInsight icon={UserRound} label="Cohort lens" value={originSummaryLabel} detail="origin filter" tone="analytics-insight-rose" />
+        </div>
+
         {!ready ? (
           <div className="flex-1 bg-slate-50 animate-pulse rounded-3xl min-h-[300px]" />
         ) : notApplicableReason ? (
@@ -234,11 +244,48 @@ export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersCh
             <p className="text-sm text-slate-600 max-w-md">{notApplicableReason}</p>
           </div>
         ) : (
-          <div key={`${active}-${selectedCodes.join("-")}-${filters.date.preset}-${filters.date.start}-${filters.date.end}-${filters.severity.join("-")}-${filters.origin.join("-")}-${filters.gender.join("-")}-${filters.atolls.join("-")}-${filters.facilities.join("-")}-${filters.outcomes.join("-")}`} className="flex-1 min-h-[360px] analytics-chart-frame animate-chartIn">
+          <MeasuredChartFrame key={`${active}-${selectedCodes.join("-")}-${filters.date.preset}-${filters.date.start}-${filters.date.end}-${filters.severity.join("-")}-${filters.origin.join("-")}-${filters.gender.join("-")}-${filters.atolls.join("-")}-${filters.facilities.join("-")}-${filters.outcomes.join("-")}`}>
             <ChartRenderer chartId={active} filters={filters} onShowEncounters={onShowEncounters} />
-          </div>
+          </MeasuredChartFrame>
         )}
       </div>
+    </div>
+  );
+}
+
+function ChartInsight({ icon: Icon, label, value, detail, tone }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; detail: string; tone: string }) {
+  return (
+    <div className={`analytics-insight-card ${tone}`}>
+      <Icon className="h-7 w-7 shrink-0 text-blue-600" />
+      <div className="min-w-0">
+        <p>{label}</p>
+        <strong className="truncate">{value}</strong>
+        <span>{detail}</span>
+      </div>
+    </div>
+  );
+}
+
+function MeasuredChartFrame({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
+    const update = () => {
+      const rect = node.getBoundingClientRect();
+      setReady(rect.width > 120 && rect.height > 120);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="analytics-chart-frame animate-chartIn">
+      {ready ? children : <div className="h-full min-h-[360px] rounded-[26px] bg-white/45 animate-pulse" />}
     </div>
   );
 }

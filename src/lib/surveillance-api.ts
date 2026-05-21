@@ -120,7 +120,7 @@ export const FACILITIES: FacilityStatus[] = [
   facility({
     id: "hulhumale", name: "Hulhumale Hospital", shortName: "HMH", type: "regional",
     lat: 4.2118, lng: 73.5433, atoll: "Kaafu", island: "Hulhumale",
-    alerts: ["Dengue daily count above critical threshold", "Foreign-patient dengue cluster under review", "ILI trend rising for three consecutive uploads"],
+    alerts: ["Dengue daily count above critical threshold", "Foreign-patient dengue cluster under review", "ILI trend rising across three consecutive facility reviews"],
     conditions: [condition("ili", 38, "up", 18), condition("dengue", 28, "up", 23), condition("gastro", 15, "up", 8), condition("pneumonia", 8, "up", 4)],
   }),
   facility({
@@ -611,7 +611,7 @@ export function generateSystemLogs(): LogEntry[] {
   const templates: { level: LogEntry["level"]; source: string; message: string; facility?: string }[] = [
     { level: "critical", source: "Disease Signal Engine", message: "Hulhumale dengue same-day count exceeded critical threshold: 23 cases", facility: "HMH" },
     { level: "warning",  source: "Foreign Audit",         message: "Facility registry detected foreign-patient dengue growth around Hulhumale Phase 2", facility: "HGP2" },
-    { level: "info",     source: "Prescription OCR",      message: "Prescription image parsed: paracetamol + CBC repeat mapped to dengue rule set", facility: "HMH" },
+    { level: "info",     source: "Prescription Signal",   message: "Medication pattern reviewed: paracetamol plus CBC repeat mapped to dengue rule set", facility: "HMH" },
     { level: "info",     source: "Lab System",             message: "Batch diagnostic results processed: 45 samples completed", facility: "IGMH" },
     { level: "info",     source: "AI Engine",              message: `${PATIENT_ENCOUNTERS.length} episodes classified across ${PATIENTS.length} de-identified patient histories` },
     { level: "warning",  source: "Dengue Watch",           message: "New dengue cluster detected in Greater Male and Raa Atoll", facility: "URH" },
@@ -664,7 +664,7 @@ export function reportDetail(id: string): ReportDetail | null {
   const facilityNames = FACILITIES.map((f) => f.name).join(", ");
   const sections: ReportSection[] = [
     { heading: "1. Facilities Reviewed", body: `The analysis reviewed de-identified episodes from ${facilityNames}. No patient names, addresses, passport numbers, national identifiers, or hospital numbers are included in this report.` },
-    { heading: "2. Case Definition and Source Data", body: "Cases were classified from EHR entries, facility registry feeds, clinician manual entries, laboratory feeds, and prescription images. AI rules used diagnosis text, symptom phrases, prescribed medicines, age, sex, facility, and encounter timing to classify disease category and severity." },
+    { heading: "2. Case Definition and Source Data", body: "Cases were classified from EHR entries, facility registry feeds, clinician manual entries, laboratory feeds, and prescription-derived clinical indicators. AI rules used diagnosis text, symptom phrases, prescribed medicines, age, sex, facility, and encounter timing to classify disease category and severity." },
     { heading: "3. Disease-Signal Thresholds", body: "Facility markers are disease-signal based only. One to two same-day cases remain stable, three to ten cases are watch-level, more than ten same-day cases are moderate, and more than twenty same-day cases are critical." },
     { heading: "4. Foreign Patient Audit", body: "Foreign-patient episodes were separated from local-patient episodes using identifier pattern, facility hospital number, passport-like values, and missing local-ID structure. Hulhumale Hospital and Hulhumale GP Clinic Phase 2 showed the strongest dengue signal among foreign-patient records." },
     { heading: "5. Clinical Symptom Patterns", body: "Dengue-classified records commonly showed high fever, retro-orbital pain, rash, platelet drop, and prescriptions indicating CBC repeat plus avoidance of NSAIDs. Respiratory classifications were supported by cough, sore throat, myalgia, positive rapid tests, and oseltamivir references where appropriate." },
@@ -680,7 +680,7 @@ export function reportDetail(id: string): ReportDetail | null {
       "Prioritize dengue review at Hulhumale Hospital and Hulhumale GP Clinic Phase 2.",
       "Require facility intake to include age, gender, diagnosis, facility, and encounter date at minimum.",
       "Route unclear foreign identifiers to manual review instead of discarding the patient episode.",
-      "Use prescription-image OCR as supporting evidence, not as the only diagnostic source.",
+      "Use prescription-derived indicators as supporting evidence, not as the only diagnostic source.",
       "Keep vaccination charts visible only for vaccine-preventable diseases.",
       "Review all critical disease signals with an epidemiologist before public reporting.",
     ],

@@ -13,7 +13,7 @@ import { Brain as PhosphorBrain, FirstAidKit, GitBranch, Robot } from "@phosphor
 import { motion } from "framer-motion";
 
 import {
-  DISEASES, DISEASE_BY_CODE, FACILITIES, IMPORTED_FOREIGN_ROWS, OUTBREAK_CLUSTERS,
+  DISEASES, DISEASE_BY_CODE, FACILITIES, IMPORTED_FOREIGN_ROWS, OUTBREAK_CLUSTERS, REPORTS,
   PATIENTS, encountersFor, fetchDashboardSummary, foreignEncounters,
   generateIncident, originSummary,
   type DashboardSummary, type DiseaseCode, type FacilityStatus, type IncidentEvent,
@@ -31,6 +31,7 @@ import {
 const SurveillanceMap = dynamic(() => import("@/components/surveillance/SurveillanceMap"), { ssr: false });
 const AnalyticsCharts = dynamic(() => import("@/components/surveillance/AnalyticsCharts"), { ssr: false });
 const EncounterLog = dynamic(() => import("@/components/surveillance/EncounterLog"), { ssr: false });
+const ReportViewer = dynamic(() => import("@/components/surveillance/ReportViewer"), { ssr: false });
 
 type SidebarView = "dashboard" | "map" | "analytics" | "outbreaks" | "patients" | "foreignAudit" | "fetching" | "logging" | "reports";
 type IntakeScope = "all" | "ready" | "pending";
@@ -43,7 +44,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "analytics", label: "Interactive Analytics", icon: BarChart3, iconUrl: "/icons/people/chart.png" },
   { id: "outbreaks", label: "Disease Signals", icon: AlertTriangle, iconUrl: "/icons/3d/target.png" },
   { id: "patients", label: "Disease Statistics", icon: Users, iconUrl: "/icons/3d/virus.png" },
-  { id: "fetching", label: "Live Processing", icon: Database, iconUrl: "/icons/3d/wifi.png" },
+  { id: "foreignAudit", label: "Foreign Patient Data Audit", icon: Globe, iconUrl: "/icons/people/earth.png" },
+  { id: "fetching", label: "Live Surveillance Data Fetching", icon: Database, iconUrl: "/icons/3d/wifi.png" },
   { id: "logging", label: "System Logs", icon: ScrollText, iconUrl: "/icons/3d/notebook.png" },
   { id: "reports", label: "AI Reports", icon: FileText, iconUrl: "/icons/3d/folder.png" },
 ];
@@ -502,7 +504,7 @@ function DashboardView({ summary, incidents, facilities, onFacilityClick, onShow
                 <img src={APP_ICON.shield} alt="" className="h-7 w-7 object-contain drop-shadow-[0_12px_18px_rgba(15,23,42,0.2)]" /> AI disease surveillance engine
               </div>
               <h2 className="max-w-2xl text-3xl font-black tracking-tight">Maldives disease signals, patient statistics, and facility alerts in one command surface.</h2>
-              <p className="mt-3 max-w-xl text-sm text-blue-100/80">This portal observes safe feeds from connected systems. It does not upload patient files or store source records.</p>
+              <p className="mt-3 max-w-xl text-sm text-blue-100/80">This portal reads de-identified encounter signals from connected clinical systems and focuses only on disease classification, thresholds, and cohort history.</p>
             </div>
             <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
               <HeroMetric label="Safe records" value={summary.totalPatients} />
@@ -816,8 +818,8 @@ function PatientStatisticsView({ onShowEncounters }: { onShowEncounters: (d: Dis
       <Panel className="p-5 bg-gradient-to-br from-white/85 to-blue-50/80">
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-5 items-center">
           <div>
-            <div className="flex items-center gap-2 mb-2"><IconTile icon={UsersRound} tone="emerald" /><div><p className="text-lg font-black text-slate-950">All Patient Statistics</p><p className="text-xs text-slate-500">Read-only view of local, foreign, and source-linked patient counts</p></div></div>
-            <p className="text-sm text-slate-600 max-w-3xl">This portal does not upload or store patient files. It observes safe feeds from Vinavi, Aasandha, and the future foreign-patient portal, then shows simple totals for the surveillance team.</p>
+            <div className="flex items-center gap-2 mb-2"><IconTile icon={UsersRound} tone="emerald" /><div><p className="text-lg font-black text-slate-950">Foreign Patient Data Audit</p><p className="text-xs text-slate-500">Read-only disease classification view for local and foreign patient cohorts</p></div></div>
+            <p className="text-sm text-slate-600 max-w-3xl">The audit separates local and foreign de-identified episodes, then compares disease patterns, severity, gender, and facility distribution for surveillance decisions.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <MiniStat label="All episodes" value={allEpisodes.length.toLocaleString()} tone="blue" />
@@ -898,21 +900,40 @@ interface SeededQueueSummary {
 interface VinaviFeedEvent {
   sourcePortal?: "Vinavi" | "Foreign";
   episodeId: string;
+  patientStatId?: string;
+  episodeSequence?: number;
   facilityId: string;
   diagnosis: string | null;
   icd10Code: string | null;
+  diseaseCode?: string | null;
   status: "ready" | "pending";
   receivedAt: string;
+  openedAt?: string;
+  closedAt?: string | null;
   pendingUntil: string | null;
   sectionCount: number;
   hasVitals: boolean;
   origin: "local" | "foreign";
+  ageBand?: string;
+  gender?: "Male" | "Female" | null;
+  atoll?: string | null;
+  clinical?: {
+    complaints: Array<{ content: string; createdAt: string }>;
+    advice: Array<{ content: string; createdAt: string }>;
+    prescriptions: Array<{ content: string; createdAt: string }>;
+    services: Array<{ content: string; createdAt: string }>;
+    vitals: Array<{ timestamp: string; bp?: string; heartRate?: number; temp?: number; spo2?: number; respRate?: number }>;
+  };
 }
 
 interface VinaviSyncSnapshot {
   total: number;
+  filteredTotal?: number;
+  patientCount?: number;
+  latestEpisodeSequence?: number;
   ready: number;
   pending: number;
+  page?: { cursor: number; limit: number; returned: number; nextCursor: number | null };
   readyEvents: VinaviFeedEvent[];
   pendingEvents: VinaviFeedEvent[];
   updatedAt: string;
@@ -948,7 +969,7 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
   const pendingCount = feedEvents.filter((item) => item.status === "pending").length;
 
   const loadFeed = useCallback(async (source: "Vinavi" | "Foreign", manual = false) => {
-    const endpoint = source === "Vinavi" ? "/api/vinavi/ingest" : "/api/foreign/ingest";
+    const endpoint = source === "Vinavi" ? "/api/vinavi/ingest?detail=full&limit=500" : "/api/foreign/ingest?detail=full&limit=500";
     try {
       const response = await fetch(endpoint, { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -995,13 +1016,20 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
       sourcePortal: item.sourcePortal ?? "Vinavi",
       sourceAction: "consultation-sync",
       episodeId: item.episodeId,
+      patientStatId: item.patientStatId,
+      episodeSequence: item.episodeSequence,
       facility: item.facilityId,
       diagnosis: item.diagnosis ?? "No diagnosis coded",
       icd10Code: item.icd10Code,
+      diseaseCode: item.diseaseCode,
       status: item.status,
       sectionCount: item.sectionCount,
       hasVitals: item.hasVitals,
       origin: item.origin,
+      ageBand: item.ageBand,
+      gender: item.gender,
+      atoll: item.atoll,
+      clinical: item.clinical ?? { complaints: [], advice: [], prescriptions: [], services: [], vitals: [] },
       operatorContext: manualNote || "No operator context supplied.",
     }));
     try {
@@ -1037,7 +1065,7 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
 
   useEffect(() => {
     if (vinaviPaused && foreignPaused) return undefined;
-    const id = setInterval(() => setStep((current) => (current + 1) % 12), 1200);
+    const id = setInterval(() => setStep((current) => (current + 1) % 12), 800);
     return () => clearInterval(id);
   }, [vinaviPaused, foreignPaused]);
 
@@ -1045,7 +1073,7 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
     <div className="space-y-4">
       <Panel className="p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3"><FlatCategoryIcon icon={Bot} tone="emerald" /><div><p className="text-lg font-black text-slate-950">Live Processing</p><p className="text-sm text-slate-500">Vinavi and Foreign portal feeds are paused until resumed for recording.</p></div></div>
+          <div className="flex items-center gap-3"><FlatCategoryIcon icon={Bot} tone="emerald" /><div><p className="text-lg font-black text-slate-950">Live Surveillance Data Fetching</p><p className="text-sm text-slate-500">Vinavi and Foreign portal feeds are paused until resumed for controlled review.</p></div></div>
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => void loadFeed("Vinavi", true)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer"><RefreshCw className="h-4 w-4" />Sync Vinavi</button>
             <button onClick={() => toggleSourceSync("Vinavi")} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black text-white cursor-pointer ${vinaviPaused ? "bg-emerald-600 hover:bg-emerald-500" : "bg-slate-950 hover:bg-slate-800"}`}><Play className="h-4 w-4" />{vinaviPaused ? "Resume Vinavi" : "Pause Vinavi"}</button>
@@ -1121,13 +1149,17 @@ function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "tim
 function VinaviFeedRow({ item, active }: { item: VinaviFeedEvent; active: boolean }) {
   const received = new Date(item.receivedAt);
   const source = item.sourcePortal ?? "Vinavi";
+  const vital = item.clinical?.vitals?.[0];
+  const complaint = item.clinical?.complaints?.[0]?.content;
+  const prescription = item.clinical?.prescriptions?.[0]?.content;
+  const service = item.clinical?.services?.[0]?.content;
   return (
     <motion.div layout animate={{ y: active ? -2 : 0 }} transition={{ type: "spring", stiffness: 260, damping: 22 }} className={`rounded-2xl border px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] ${active ? "border-blue-200 bg-blue-50/80" : "border-slate-100 bg-white/80"}`}>
       <div className="flex items-center gap-3">
         <span className={`h-10 w-10 rounded-2xl flex items-center justify-center text-xs font-black ${item.status === "ready" ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-700"}`}>{item.status === "ready" ? "AI" : "20m"}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-black text-slate-800">{item.episodeId}</p>
-          <p className="text-[11px] text-slate-500">{source} · {item.facilityId} · {received.toLocaleDateString()} {received.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+          <p className="text-[11px] text-slate-500">{source} · {item.patientStatId ?? "STAT pending"} · sequence {item.episodeSequence ?? "n/a"} · {item.facilityId} · {received.toLocaleDateString()} {received.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
         </div>
         <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${item.status === "ready" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status}</span>
       </div>
@@ -1135,8 +1167,13 @@ function VinaviFeedRow({ item, active }: { item: VinaviFeedEvent; active: boolea
         <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">Clinical:</strong> {item.diagnosis ?? "not coded"}</span>
         <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">ICD:</strong> {item.icd10Code ?? "pending"}</span>
         <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">Sections:</strong> {item.sectionCount}</span>
-        <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">Vitals:</strong> {item.hasVitals ? "yes" : "no"}</span>
+        <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">Vitals:</strong> {vital ? `${vital.bp ?? "bp n/a"}, HR ${vital.heartRate ?? "n/a"}, SpO2 ${vital.spo2 ?? "n/a"}` : item.hasVitals ? "available" : "no"}</span>
       </div>
+      {(complaint || prescription || service) && <div className="mt-2 grid gap-2 text-[11px] text-slate-600 md:grid-cols-3">
+        <p className="line-clamp-2 rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-800">Complaint:</strong> {complaint ?? "n/a"}</p>
+        <p className="line-clamp-2 rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-800">Service:</strong> {service ?? "n/a"}</p>
+        <p className="line-clamp-2 rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-800">Prescription:</strong> {prescription ?? "n/a"}</p>
+      </div>}
     </motion.div>
   );
 }
@@ -1214,15 +1251,21 @@ function LiveOpenRouterProbe({ event }: { event?: VinaviFeedEvent }) {
       facilityId: event.facilityId,
       diagnosis: event.diagnosis ?? "",
       icd10Code: event.icd10Code ?? undefined,
-      openedAt: event.receivedAt,
-      closedAt: event.receivedAt,
+      openedAt: event.openedAt ?? event.receivedAt,
+      closedAt: event.closedAt ?? event.receivedAt,
       status: "closed",
       origin: event.origin,
-      sections: [{
+      sections: event.clinical ? [
+        ...event.clinical.complaints.map((entry) => ({ type: "complaint", content: entry.content, createdAt: entry.createdAt })),
+        ...event.clinical.advice.map((entry) => ({ type: "advice", content: entry.content, createdAt: entry.createdAt })),
+        ...event.clinical.prescriptions.map((entry) => ({ type: "prescription", content: entry.content, createdAt: entry.createdAt })),
+        ...event.clinical.services.map((entry) => ({ type: "service", content: entry.content, createdAt: entry.createdAt })),
+      ] : [{
         type: "vinavi_safe_sync",
         content: `Vinavi safe sync event. Diagnosis: ${event.diagnosis ?? "not coded"}. ICD-10: ${event.icd10Code ?? "pending"}. Clinical sections: ${event.sectionCount}. Vitals present: ${event.hasVitals ? "yes" : "no"}.`,
         createdAt: event.receivedAt,
       }],
+      vitals: event.clinical?.vitals ?? [],
     };
     try {
       const response = await fetch("/api/ai/analyze-episode", {
@@ -1313,12 +1356,20 @@ function ReportsView({ analyticsFilters, aiPaused }: { analyticsFilters: Analyti
   const [template, setTemplate] = useState<"daily" | "weekly" | "outbreak" | "facility" | "foreign">("weekly");
   const [error, setError] = useState<string | null>(null);
   const [openMd, setOpenMd] = useState<GeneratedRun | null>(null);
+  const [selectedReport, setSelectedReport] = useState<ReportMeta | null>(null);
+  const [reportSearch, setReportSearch] = useState("");
   const reportDiseaseCode = analyticsFilters.diagnoses.length === 1 && analyticsFilters.diagnoses[0] in DISEASE_BY_CODE
     ? analyticsFilters.diagnoses[0] as DiseaseCode
     : analyticsFilters.diagnosis !== "all" && analyticsFilters.diagnosis in DISEASE_BY_CODE
       ? analyticsFilters.diagnosis as DiseaseCode
       : "all";
   const reportDiseaseLabel = reportDiseaseCode === "all" ? "the current analytics selection" : DISEASE_BY_CODE[reportDiseaseCode].name;
+  const libraryReports = useMemo(() => {
+    const query = reportSearch.trim().toLowerCase();
+    if (!query) return REPORTS;
+    return REPORTS.filter((report) => `${report.title} ${report.type} ${report.author} ${report.id}`.toLowerCase().includes(query));
+  }, [reportSearch]);
+  const libraryPages = REPORTS.reduce((sum, report) => sum + report.pageCount, 0);
 
   const modelChain = [
     { name: "Raw Ingestion Buffer", role: "deepseek/deepseek-v4-flash:free — parses messy 12-hour clinic sync payloads into a clean surveillance JSON array", icon: Stethoscope, tone: "emerald" as const },
@@ -1364,11 +1415,51 @@ function ReportsView({ analyticsFilters, aiPaused }: { analyticsFilters: Analyti
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Library reports" value="0" icon={FileText} tone="blue" />
+        <StatCard label="Library reports" value={REPORTS.length} icon={FileText} tone="blue" />
         <StatCard label="Live ensemble runs" value={generated.length} icon={Sparkles} tone="emerald" />
-        <StatCard label="Pages on file" value="0" icon={ClipboardList} tone="violet" />
+        <StatCard label="Pages on file" value={libraryPages.toLocaleString()} icon={ClipboardList} tone="violet" />
         <StatCard label="Manual review (live)" value={generated.reduce((sum, run) => sum + (run.ensembleSummary?.flaggedForReview ?? 0), 0)} icon={ShieldAlert} tone="amber" />
       </div>
+
+      <Panel className="report-lagoon-panel overflow-hidden p-5">
+        <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <IconTile icon={FileText} tone="blue" imageUrl={APP_ICON.folder} />
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Report library</p>
+              <h2 className="text-xl font-black tracking-tight text-slate-950">Detailed surveillance reports</h2>
+              <p className="text-xs text-slate-500">Long-form epidemiology packs with disease signals, cohorts, methodology, and recommendations.</p>
+            </div>
+          </div>
+          <label className="modern-menu-button min-w-full lg:min-w-[360px]">
+            <Search className="h-4 w-4 shrink-0 text-blue-600" />
+            <input value={reportSearch} onChange={(event) => setReportSearch(event.target.value)} placeholder="Search reports, disease, facility..." className="min-w-0 flex-1 bg-transparent text-sm font-black text-slate-800 outline-none placeholder:text-slate-400" />
+          </label>
+        </div>
+        <div className="relative z-10 mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {libraryReports.map((report) => {
+            const diseaseLabel = report.diseaseCode && report.diseaseCode !== "all" ? DISEASE_BY_CODE[report.diseaseCode].name : "National view";
+            return (
+              <button key={report.id} onClick={() => setSelectedReport(report)} className="report-glass-row group flex items-center gap-4 rounded-[26px] border border-white/80 bg-white/72 p-4 text-left transition-all hover:-translate-y-0.5 hover:bg-white/92 cursor-pointer">
+                <IconTile icon={FileText} tone={report.status === "Ready" ? "emerald" : "amber"} compact />
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black uppercase text-blue-700">{report.type}</span>
+                    <span className="font-mono text-[10px] font-bold text-slate-400">{report.id}</span>
+                  </div>
+                  <p className="truncate text-sm font-black text-slate-950">{report.title}</p>
+                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">{diseaseLabel} - {report.pageCount} pages - {report.date}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span className={`rounded-xl px-2 py-1 text-[10px] font-black ${report.status === "Ready" ? "bg-emerald-50 text-emerald-700" : report.status === "In Progress" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{report.status}</span>
+                  <ChevronRight className="ml-auto mt-3 h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-600" />
+                </div>
+              </button>
+            );
+          })}
+          {libraryReports.length === 0 && <div className="rounded-[26px] border border-dashed border-white/80 bg-white/60 p-8 text-center text-sm font-black text-slate-400 xl:col-span-2">No report matched this search.</div>}
+        </div>
+      </Panel>
 
       <Panel className="p-5 modern-menu-shell">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1440,6 +1531,7 @@ function ReportsView({ analyticsFilters, aiPaused }: { analyticsFilters: Analyti
           </div>
         </div>
       )}
+      {selectedReport && <ReportViewer meta={selectedReport} onClose={() => setSelectedReport(null)} />}
     </div>
   );
 }

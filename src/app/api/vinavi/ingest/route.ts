@@ -14,14 +14,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   upsertConsultation,
+  upsertConsultations,
   getReadyConsultations,
   getPendingConsultations,
+  latestEpisodeSequence,
+  maxStoreSize,
+  patientCount,
   storeSize,
   type PendingConsultation,
   type VinaviConsultationPayload,
 } from "@/lib/consultation-store";
 
 export const runtime = "nodejs";
+const MAX_BATCH_SIZE = 5000;
 
 function validatePayload(body: unknown): { ok: true; payload: VinaviConsultationPayload } | { ok: false; error: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -71,6 +76,8 @@ function validatePayload(body: unknown): { ok: true; payload: VinaviConsultation
             bp: vit.bp ? clean(vit.bp as string, 16) : undefined,
             heartRate: typeof vit.heartRate === "number" ? Math.max(0, Math.min(300, vit.heartRate)) : undefined,
             temp: typeof vit.temp === "number" ? Math.max(30, Math.min(45, vit.temp)) : undefined,
+            spo2: typeof vit.spo2 === "number" ? Math.max(0, Math.min(100, vit.spo2)) : undefined,
+            respRate: typeof vit.respRate === "number" ? Math.max(0, Math.min(80, vit.respRate)) : undefined,
           };
         })
       : undefined,
@@ -78,6 +85,24 @@ function validatePayload(body: unknown): { ok: true; payload: VinaviConsultation
   };
 
   return { ok: true, payload };
+}
+
+function validatePayloadList(body: unknown): { ok: true; payloads: VinaviConsultationPayload[] } | { ok: false; error: string } {
+  const candidate = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+  const list = Array.isArray(body) ? body : Array.isArray(candidate?.records) ? candidate.records : Array.isArray(candidate?.consultations) ? candidate.consultations : null;
+  if (!list) {
+    const single = validatePayload(body);
+    return single.ok ? { ok: true, payloads: [single.payload] } : { ok: false, error: single.error };
+  }
+  if (list.length === 0) return { ok: false, error: "Batch must contain at least one consultation." };
+  if (list.length > MAX_BATCH_SIZE) return { ok: false, error: `Batch too large. Send at most ${MAX_BATCH_SIZE} consultations per request.` };
+  const payloads: VinaviConsultationPayload[] = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const validation = validatePayload(list[index]);
+    if (!validation.ok) return { ok: false, error: `records[${index}]: ${validation.error}` };
+    payloads.push(validation.payload);
+  }
+  return { ok: true, payloads };
 }
 
 export async function POST(request: NextRequest) {
@@ -88,22 +113,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() });
   }
 
-  const validation = validatePayload(body);
+  const validation = validatePayloadList(body);
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 422, headers: corsHeaders() });
   }
 
-  const record = upsertConsultation(validation.payload);
-  const status = record.pendingUntil ? "pending" : "ready";
+  const records = upsertConsultations(validation.payloads);
+  const ready = records.filter((record) => !record.pendingUntil).length;
+  const pending = records.length - ready;
 
   return NextResponse.json({
-    accepted: true,
-    episodeId: record.payload.episodeId,
-    status,
-    pendingUntil: record.pendingUntil ?? null,
-    message: status === "pending"
-      ? `Episode held pending until ${record.pendingUntil} (blank episode grace period). Re-POST with content to release early.`
-      : "Episode accepted and ready for surveillance analytics.",
+    ok: true,
+    accepted: records.length,
+    acceptedCount: records.length,
+    ready,
+    pending,
+    firstEpisodeId: records[0]?.payload.episodeId ?? null,
+    lastEpisodeId: records.at(-1)?.payload.episodeId ?? null,
+    firstEpisodeSequence: records[0]?.episodeSequence ?? null,
+    lastEpisodeSequence: records.at(-1)?.episodeSequence ?? null,
+    storeSize: storeSize(),
+    maxStoreSize: maxStoreSize(),
+    patientCount: patientCount(),
+    message: `${records.length} consultation${records.length === 1 ? "" : "s"} accepted for surveillance intake.`,
   }, { status: 201, headers: corsHeaders() });
 }
 
@@ -126,37 +158,104 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json({
     updated: true,
     episodeId: record.payload.episodeId,
+    patientStatId: record.patientStatId,
+    episodeSequence: record.episodeSequence,
     status,
     pendingUntil: record.pendingUntil ?? null,
   }, { headers: corsHeaders() });
 }
 
-function toSafeEvent(record: PendingConsultation, status: "ready" | "pending") {
+function ageBand(age?: number) {
+  if (typeof age !== "number") return "unknown";
+  if (age < 5) return "0-4";
+  if (age < 10) return "5-9";
+  if (age < 20) return "10-19";
+  if (age < 30) return "20-29";
+  if (age < 40) return "30-39";
+  if (age < 50) return "40-49";
+  if (age < 60) return "50-59";
+  if (age < 70) return "60-69";
+  return "70+";
+}
+
+function diseaseCodeFromIcd(icd10?: string | null) {
+  const code = (icd10 ?? "").toUpperCase();
+  if (code.startsWith("A90")) return "dengue";
+  if (code.startsWith("A09") || code.startsWith("K52")) return "gastro";
+  if (code.startsWith("J10")) return "influenza";
+  if (code.startsWith("J11")) return "ili";
+  if (code.startsWith("J18")) return "pneumonia";
+  if (code.startsWith("B08.4")) return "hfmd";
+  if (code.startsWith("R07")) return "chest_pain";
+  if (code.startsWith("E86")) return "dehydration";
+  if (code.startsWith("R56.0")) return "febrile_seizure";
+  return null;
+}
+
+function sectionContent(payload: VinaviConsultationPayload, type: string) {
+  return payload.sections.filter((section) => section.type === type && section.content.trim()).map((section) => ({ content: section.content, createdAt: section.createdAt }));
+}
+
+function toSafeEvent(record: PendingConsultation, status: "ready" | "pending", includeDetails = false) {
   const payload = record.payload;
-  return {
+  const base = {
     episodeId: payload.episodeId,
+    patientStatId: record.patientStatId,
+    episodeSequence: record.episodeSequence,
     facilityId: payload.facilityId,
     diagnosis: payload.diagnosis?.trim() || null,
     icd10Code: payload.icd10Code ?? null,
+    diseaseCode: diseaseCodeFromIcd(payload.icd10Code),
     status,
     receivedAt: record.receivedAt,
+    openedAt: payload.openedAt,
+    closedAt: payload.closedAt ?? null,
     pendingUntil: status === "pending" ? record.pendingUntil : null,
     sectionCount: payload.sections.filter((section) => section.content.trim()).length,
     hasVitals: Boolean(payload.vitals?.length),
     origin: payload.origin ?? "local",
+    ageBand: ageBand(payload.patientAge),
+    gender: payload.patientGender ?? null,
+    atoll: payload.patientAtoll ?? null,
+  };
+  if (!includeDetails) return base;
+  return {
+    ...base,
+    clinical: {
+      complaints: sectionContent(payload, "complaint"),
+      advice: sectionContent(payload, "advice"),
+      prescriptions: sectionContent(payload, "prescription"),
+      services: sectionContent(payload, "service"),
+      vitals: payload.vitals ?? [],
+    },
   };
 }
 
 /** GET /api/vinavi/ingest — returns non-sensitive API sync summary and event tokens */
-export async function GET() {
-  const ready = getReadyConsultations();
-  const pending = getPendingConsultations();
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const includeDetails = searchParams.get("include") === "details" || searchParams.get("detail") === "full";
+  const status = searchParams.get("status") ?? "all";
+  const cursor = Math.max(0, Math.floor(Number(searchParams.get("cursor") ?? searchParams.get("offset") ?? 0) || 0));
+  const limit = Math.max(1, Math.min(1000, Math.floor(Number(searchParams.get("limit") ?? (includeDetails ? 250 : 100)) || 100)));
+  const requestedPatientStatId = searchParams.get("patientStatId");
+  const ready = getReadyConsultations().filter((record) => !requestedPatientStatId || record.patientStatId === requestedPatientStatId);
+  const pending = getPendingConsultations().filter((record) => !requestedPatientStatId || record.patientStatId === requestedPatientStatId);
+  const combined = (status === "ready" ? ready : status === "pending" ? pending : [...ready, ...pending])
+    .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
+  const page = combined.slice(cursor, cursor + limit);
+  const pageEvents = page.map((record) => toSafeEvent(record, record.pendingUntil ? "pending" : "ready", includeDetails));
   return NextResponse.json({
     total: storeSize(),
+    filteredTotal: combined.length,
+    maxStoreSize: maxStoreSize(),
+    patientCount: patientCount(),
+    latestEpisodeSequence: latestEpisodeSequence(),
     ready: ready.length,
     pending: pending.length,
-    readyEvents: ready.slice(-100).reverse().map((record) => toSafeEvent(record, "ready")),
-    pendingEvents: pending.slice(-50).reverse().map((record) => toSafeEvent(record, "pending")),
+    page: { cursor, limit, returned: pageEvents.length, nextCursor: cursor + pageEvents.length < combined.length ? cursor + pageEvents.length : null },
+    readyEvents: status === "pending" ? [] : pageEvents.filter((event) => event.status === "ready"),
+    pendingEvents: status === "ready" ? [] : pageEvents.filter((event) => event.status === "pending"),
     updatedAt: new Date().toISOString(),
   }, { headers: corsHeaders() });
 }

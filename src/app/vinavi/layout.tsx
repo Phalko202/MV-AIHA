@@ -52,37 +52,48 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
   const totalConsultations = MOCK_PATIENTS.reduce((sum, patient) => sum + patient.episodes.length, 0);
 
   const seedConsultations = async () => {
-    const amount = Math.max(1, Math.min(200, Number(seedAmount) || 25));
-    setSeedStatus("Sending safe consultations to surveillance intake...");
+    const amount = Math.max(1, Math.min(totalConsultations, Number(seedAmount) || 25));
+    setSeedStatus("Sending one batched consultation request to surveillance intake...");
     try {
       const episodes = MOCK_PATIENTS.flatMap((patient) => patient.episodes.map((episode) => ({ patient, episode })));
-      for (let index = 0; index < amount; index += 1) {
-        const item = episodes[index % episodes.length];
-        await fetch(`${SURVEILLANCE_ORIGIN}/api/vinavi/ingest`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            episodeId: `${item.episode.id}-DEMO-${Date.now()}-${index}`,
-            patientId: `VINAVI-${(index + 1).toString().padStart(4, "0")}`,
-            patientAge: item.patient.age,
-            patientGender: item.patient.gender,
-            patientAtoll: item.patient.atoll,
-            patientIsland: item.patient.island,
-            facilityId: item.patient.hospital.toLowerCase().includes("hulhum") ? "hulhumale" : "igmh",
-            doctorName: "Vinavi clinician",
-            specialty: item.episode.specialty,
-            openedAt: new Date().toISOString(),
-            closedAt: new Date().toISOString(),
-            status: "closed",
-            diagnosis: item.episode.diagnosis,
-            icd10Code: item.episode.diagnosis.toLowerCase().includes("respiratory") ? "J11" : item.episode.diagnosis.toLowerCase().includes("asthma") ? "J45" : "Z02.7",
-            sections: item.episode.sections.map((section) => ({ type: section.type, content: section.content, createdAt: section.createdAt })),
-            vitals: item.episode.vitals.map((vital) => ({ timestamp: vital.timestamp, bp: vital.bp, heartRate: vital.heartRate, temp: vital.temp })),
-            origin: "local",
-          }),
-        });
-      }
-      setSeedStatus(`${amount} consultations sent. Resume Vinavi sync in surveillance to show intake.`);
+      const batchId = Date.now();
+      const consultations = episodes.slice(0, amount).map((item, index) => {
+        const diagnosis = item.episode.diagnosis.toLowerCase();
+        const icd10Code = diagnosis.includes("dengue") ? "A90"
+          : diagnosis.includes("gastro") ? "A09"
+            : diagnosis.includes("asthma") ? "J45"
+              : diagnosis.includes("hypertension") ? "I10"
+                : diagnosis.includes("respiratory") ? "J11"
+                  : "Z02.7";
+        return {
+          episodeId: `${item.episode.id}-DEMO-${batchId}-${index}`,
+          patientId: item.patient.id,
+          patientAge: item.patient.age,
+          patientGender: item.patient.gender,
+          patientAtoll: item.patient.atoll,
+          patientIsland: item.patient.island,
+          facilityId: item.patient.hospital.toLowerCase().includes("hulhum") ? "hulhumale" : item.patient.hospital.toLowerCase().includes("tree") ? "tree-top" : item.patient.hospital.toLowerCase().includes("adk") ? "adk" : "igmh",
+          doctorName: "Vinavi clinician",
+          specialty: item.episode.specialty,
+          openedAt: `${item.episode.date}T08:20:00Z`,
+          closedAt: item.episode.status === "closed" ? `${item.episode.date}T09:05:00Z` : null,
+          status: item.episode.status,
+          diagnosis: item.episode.diagnosis,
+          icd10Code,
+          sections: item.episode.sections.map((section) => ({ type: section.type, content: section.content, createdAt: section.createdAt })),
+          vitals: item.episode.vitals.map((vital) => ({ timestamp: vital.timestamp, bp: vital.bp, heartRate: vital.heartRate, temp: vital.temp, spo2: vital.spo2, respRate: vital.respRate })),
+          origin: "local",
+        };
+      });
+      const response = await fetch(`${SURVEILLANCE_ORIGIN}/api/vinavi/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ consultations }),
+      });
+      const result = await response.json().catch(() => null) as { accepted?: number; acceptedCount?: number; patientCount?: number; firstEpisodeSequence?: number; lastEpisodeSequence?: number; error?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? `HTTP ${response.status}`);
+      const uniquePatients = new Set(consultations.map((item) => item.patientId)).size;
+      setSeedStatus(`${result?.acceptedCount ?? amount} consultations from ${uniquePatients} patient(s) sent in one batch. Sequence ${result?.firstEpisodeSequence ?? "?"}-${result?.lastEpisodeSequence ?? "?"}. Resume Vinavi sync in surveillance.`);
     } catch (error) {
       setSeedStatus(`Send failed: ${error instanceof Error ? error.message : "surveillance API unavailable"}`);
     }
@@ -261,7 +272,7 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
                 <p className="text-sm font-bold text-rose-800">Send consultation batch</p>
                 <p className="mt-1 text-xs leading-5 text-rose-700/80">This only pushes safe records to the surveillance ingest API. It does not start AI.</p>
                 <div className="mt-3 flex gap-2">
-                  <input value={seedAmount} onChange={(event) => setSeedAmount(event.target.value.replace(/[^0-9]/g, "").slice(0, 3))} className="min-w-0 flex-1 rounded border border-rose-200 bg-white px-3 py-2 text-sm font-bold outline-none" />
+                  <input value={seedAmount} onChange={(event) => setSeedAmount(event.target.value.replace(/[^0-9]/g, "").slice(0, 4))} className="min-w-0 flex-1 rounded border border-rose-200 bg-white px-3 py-2 text-sm font-bold outline-none" />
                   <button onClick={seedConsultations} className="inline-flex items-center gap-2 rounded bg-rose-600 px-3 py-2 text-sm font-bold text-white"><Database className="h-4 w-4" />Send</button>
                 </div>
                 <p className="mt-2 text-xs font-semibold text-rose-800">{seedStatus}</p>

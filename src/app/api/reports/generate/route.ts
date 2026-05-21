@@ -164,7 +164,7 @@ function composeMarkdown(input: {
   lines.push("");
   lines.push("## Recommendations");
   lines.push("1. Manually review every episode flagged with ensemble agreement below 60%.");
-  lines.push("2. Continue routing prescription-image OCR results through a clinician before public alerts.");
+  lines.push("2. Continue routing prescription-derived disease signals through a clinician before public alerts.");
   lines.push("3. Re-run this report daily for critical disease signals; weekly for stable categories.");
   return lines.join("\n");
 }

@@ -161,7 +161,7 @@ export default function EncounterLog({ disease, filter, label, onClose }: Props)
                 </thead>
                 <tbody className="divide-y divide-slate-100/70">
                   {slice.map((encounter) => (
-                    <tr key={encounter.id} onClick={() => setSelected(encounter)} className="group cursor-pointer bg-white/50 transition-all hover:bg-blue-50/50">
+                    <tr key={`${encounter.id}-${encounter.patientKey}-${encounter.episodeId}`} onClick={() => setSelected(encounter)} className="group cursor-pointer bg-white/50 transition-all hover:bg-blue-50/50">
                       <td className="px-5 py-3 font-mono text-slate-800"><span className="font-black text-slate-950">{safeRef(encounter)}</span><br /><span className="text-[10px] text-blue-600">de-identified</span></td>
                       <td className="px-4 py-3"><span className="font-black text-slate-800">{DISEASE_BY_CODE[encounter.diseaseCode].name}</span><br /><span className="text-[10px] text-slate-400">{DISEASE_BY_CODE[encounter.diseaseCode].icd10}</span></td>
                       <td className="px-4 py-3 text-slate-600"><span className="font-bold">Onset {encounter.onsetDate}</span><br /><span className="text-[10px] text-slate-400">Admit {encounter.admissionDate}</span></td>
