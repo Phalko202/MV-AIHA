@@ -101,7 +101,9 @@ interface EncounterLogRequest {
 
 function formatMvtTime() {
   const date = new Date();
-  return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}:${date.getSeconds().toString().padStart(2, "0")}`;
+  const calendar = date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const clock = `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}:${date.getSeconds().toString().padStart(2, "0")}`;
+  return `${calendar} · ${clock}`;
 }
 
 export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: boolean }) {
@@ -210,7 +212,7 @@ export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: bo
         <div className="relative px-4 py-3 border-t border-cyan-200/14 bg-slate-950/24">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_16px_rgba(52,211,153,0.8)]" />
-            {!sidebarCollapsed && <span suppressHydrationWarning className="text-[10px] text-cyan-100/70 font-mono">{currentTime} MVT</span>}
+            {!sidebarCollapsed && <span suppressHydrationWarning className="text-[10px] leading-tight text-cyan-100/70 font-mono">{currentTime} MVT</span>}
           </div>
         </div>
       </aside>
@@ -1053,10 +1055,10 @@ function ReportsView({ onOpen, analyticsFilters, aiPaused }: { onOpen: (report: 
   const [openMd, setOpenMd] = useState<GeneratedRun | null>(null);
 
   const modelChain = [
-    { name: "The Matrix Compiler", role: "deepseek/deepseek-v4-flash:free — processes raw JSON blocks and maps signal geometry", icon: Stethoscope, tone: "emerald" as const },
-    { name: "The Outbreak Synthesizer", role: "openai/gpt-oss-120b:free — clusters symptom streams into a single outbreak picture", icon: BrainCircuit, tone: "blue" as const },
-    { name: "The Command Briefing Engine", role: "google/gemma-4-31b-it:free — writes the ministerial command brief", icon: Microscope, tone: "violet" as const },
-    { name: "MV-AIHS Guard Rail", role: "local suppression, k-anonymity checks, routing, and release control", icon: Bot, tone: "amber" as const },
+    { name: "Raw Ingestion Buffer", role: "deepseek/deepseek-v4-flash:free — parses messy 12-hour clinic sync payloads into a clean surveillance JSON array", icon: Stethoscope, tone: "emerald" as const },
+    { name: "Analytical Synthesizer", role: "nvidia/nemotron-3-super-120b-a12b:free — cross-checks the normalized feed against expected baselines and flags outbreak spikes", icon: BrainCircuit, tone: "blue" as const },
+    { name: "Strategic Briefing Engine", role: "openai/gpt-oss-120b:free — converts verified anomaly signals into a concise ministerial tactical brief", icon: Microscope, tone: "violet" as const },
+    { name: "MV-AIHS Guard Rail", role: "destructive purge, negative prompting, regex privacy killswitch, and release control", icon: Bot, tone: "amber" as const },
   ];
 
   const handleGenerate = async () => {

@@ -261,10 +261,10 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/50 backdrop-blur-sm pt-12 pb-4 px-4 overflow-y-auto" onClick={() => setOpen(false)}>
-          <div className="relative w-full max-w-6xl flex flex-col rounded-[32px] border border-white/80 bg-white shadow-[0_40px_120px_rgba(15,23,42,0.28)]" onClick={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-[70] bg-slate-950/58 backdrop-blur-md" onClick={() => setOpen(false)}>
+          <div className="relative flex h-screen w-screen flex-col bg-white shadow-[0_40px_120px_rgba(15,23,42,0.28)]" onClick={(event) => event.stopPropagation()}>
             {/* sticky header */}
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/60 to-cyan-50/50 px-6 py-5 rounded-t-[32px]">
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/75 to-cyan-50/65 px-6 py-5 xl:px-8">
               <div>
                 <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-blue-600"><SlidersHorizontal className="h-3.5 w-3.5" /> Analytics filter popup</div>
                 <h3 className="text-xl font-black tracking-tight text-slate-950">Diagnosis, date, and cohort controls</h3>
@@ -278,15 +278,15 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
             </div>
 
             {/* two-column body — both columns scroll independently */}
-            <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr]">
+            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(360px,440px)_1fr] overflow-hidden">
               {/* left: disease picker */}
-              <div className="border-r border-slate-100 bg-slate-50/70 p-5">
+              <div className="overflow-y-auto border-b border-slate-100 bg-slate-50/70 p-5 lg:border-b-0 lg:border-r lg:p-6 xl:p-8">
                 <SectionTitle icon={Search} title="Diagnosis library" detail="Search and pick a disease focus, or leave the stack on All." />
                 <label className="mt-3 flex items-center gap-2 rounded-2xl border border-white bg-white px-3 py-2.5 shadow-sm">
                   <Search className="h-4 w-4 text-slate-400 shrink-0" />
                   <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ICD-10, category, disease..." className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400" />
                 </label>
-                <div className="mt-3 space-y-1 max-h-[360px] overflow-y-auto pr-1">
+                <div className="mt-3 space-y-1 pr-1 lg:max-h-none">
                   <button onClick={() => setDraft({ ...draft, diagnosis: "all" })} className={`analytics-choice w-full ${draft.diagnosis === "all" ? "is-selected" : ""}`}>
                     <span><strong>All diseases</strong><small>National stack — all tracked groups</small></span>{draft.diagnosis === "all" && <Check className="h-4 w-4 shrink-0" />}
                   </button>
@@ -311,8 +311,8 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
               </div>
 
               {/* right: all other filters */}
-              <div className="p-5">
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="overflow-y-auto p-5 lg:p-6 xl:p-8">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   <div className="rounded-2xl border border-slate-100 bg-white p-4">
                     <SectionTitle icon={CalendarDays} title="Signal window" detail="Choose a preset or enter a custom range." />
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -396,7 +396,7 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
               </div>
             </div>
             {/* sticky apply footer for mobile */}
-            <div className="border-t border-slate-100 bg-white/80 px-6 py-3 flex justify-end gap-2 rounded-b-[32px] lg:hidden">
+            <div className="border-t border-slate-100 bg-white/92 px-6 py-3 flex justify-end gap-2 lg:hidden">
               <button onClick={() => setDraft(DEFAULT_ANALYTICS_FILTERS)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 cursor-pointer">Reset</button>
               <button onClick={() => { onChange(draft); setOpen(false); }} className="rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 px-5 py-2 text-xs font-black text-white cursor-pointer">Apply</button>
             </div>

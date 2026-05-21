@@ -10,7 +10,7 @@ export const runtime = "nodejs";
  *
  * Pipeline:
  *   1. redactPatientEpisode()   ← strips PHI, computes ageYears, hashes source
- *   2. analyzeEpisodeEnsemble() ← OpenRouter, 5+ free medical models, majority vote
+ *   2. analyzeEpisodeEnsemble() ← OpenRouter 3-model stack, privacy guard, majority vote
  *
  * Returns: { redacted, audit, ensemble }
  * The unredacted episode is NEVER logged or echoed back.
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     name: "MV-AIHA episode analyzer",
-    description: "POST { episode } — redacts PHI then runs an OpenRouter free-model ensemble.",
+    description: "POST { episode } — redacts PHI then runs the guarded OpenRouter 3-model ensemble.",
     requiredEnv: ["OPENROUTER_API_KEY"],
   });
 }

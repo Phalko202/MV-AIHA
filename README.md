@@ -98,31 +98,38 @@ Before any HTTP call to OpenRouter, [src/lib/openrouter.ts](src/lib/openrouter.t
 
 The unredacted payload is **never logged**. Server-side audit logs only record the SHA-256 prefix returned by the redactor plus the list of removed field names. The original episode object cannot be reconstructed from anything that touches disk.
 
-### Ensemble inference (anti-hallucination)
+### Ensemble inference and 3-stage surveillance pipeline
 
-We do not trust a single model. Each redacted episode is dispatched in parallel to 5+ free medical-capable models on OpenRouter (configurable via the `MV_AIHA_MODELS` environment variable; defaults include Meta Llama 3.3 70B, DeepSeek R1, Qwen 2.5 72B, Google Gemma 2 9B, Mistral 7B, Nous Hermes 3 405B, and Microsoft Phi-3 Mini 128K — all `:free` variants).
+MV-AIHA now uses two AI execution patterns:
 
-The orchestrator:
+- **Episode review ensemble**: three OpenRouter models run in parallel for redacted episode-level second opinions. The default chain is DeepSeek V4 Flash, NVIDIA Nemotron 3 Super 120B, and OpenAI GPT-OSS 120B.
+- **Surveillance feed pipeline**: a sequential 3-stage route at `/api/ai/surveillance-feed` that processes raw 12-hour clinic sync batches through:
+	1. **Raw Ingestion Buffer** — `deepseek/deepseek-v4-flash:free`
+	2. **Analytical Synthesizer** — `nvidia/nemotron-3-super-120b-a12b:free`
+	3. **Strategic Briefing Engine** — `openai/gpt-oss-120b:free`
 
-- Runs all calls in parallel with a per-call timeout of 18 seconds.
-- Discards any response that does not return strict JSON in the agreed schema.
-- Majority-votes the diagnosis text (normalised to lowercase alphanumerics).
-- Averages confidence across models that agreed with the majority.
-- Computes an **agreement ratio** — fraction of responding models that voted for the winning diagnosis.
-- **Flags the episode for manual clinician review** when agreement is below 60%, average confidence is below 55%, or fewer than two models responded successfully.
+The surveillance route enforces three guardrails in order:
 
-This majority-vote design is what suppresses single-model hallucination at scale. A single confident-but-wrong model cannot promote a public health signal on its own.
+- **Pre-API destructive purge** in TypeScript before any model call.
+- **In-context negative prompting** that forces aggregate-only outputs.
+- **Post-inference regex verification** that blocks releases if structural identity markers appear.
+
+The episode-review ensemble still majority-votes diagnosis text, averages agreement-weighted confidence, and flags any low-agreement result for manual review.
 
 ### Configuration
 
-Put your OpenRouter API key in `.env.local` at the project root:
+Copy `.env.example` to `.env.local` at the project root, then add your OpenRouter key:
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
-# optional — override the model list (comma-separated OpenRouter model IDs)
-MV_AIHA_MODELS=meta-llama/llama-3.3-70b-instruct:free,deepseek/deepseek-r1:free,qwen/qwen-2.5-72b-instruct:free,google/gemma-2-9b-it:free,mistralai/mistral-7b-instruct:free
+# optional — override the episode-review model list (comma-separated)
+MV_AIHA_MODELS=deepseek/deepseek-v4-flash:free,nvidia/nemotron-3-super-120b-a12b:free,openai/gpt-oss-120b:free
+# optional — override the 3-stage surveillance pipeline models individually
+MV_AIHA_INGEST_MODEL=deepseek/deepseek-v4-flash:free
+MV_AIHA_SYNTH_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+MV_AIHA_BRIEF_MODEL=openai/gpt-oss-120b:free
 # optional — overrides the referrer reported to OpenRouter
-MV_AIHA_SITE_URL=https://your-deployment.example
+MV_AIHA_SITE_URL=http://localhost:3000
 ```
 
 If `OPENROUTER_API_KEY` is missing, the ensemble returns `INSUFFICIENT_DATA` with confidence 0 and the request is flagged for manual review. The portal continues to function and never silently uses a fallback that could leak data.
