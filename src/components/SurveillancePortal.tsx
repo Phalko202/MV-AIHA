@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
-  Activity, AlertTriangle, BarChart3, Bot, BrainCircuit, Building2, ChevronRight, ClipboardCheck, ClipboardList,
+  Activity, AlertTriangle, BarChart3, Bot, BrainCircuit, Building2, Check, ChevronDown, ChevronRight, ClipboardCheck, ClipboardList,
   Database, FileCheck, FileText, FlaskConical, Globe, Image, LayoutDashboard,
   Map, Microscope, Network, Play, RefreshCw, ScrollText, Search, ShieldAlert, SlidersHorizontal, Sparkles, Stethoscope,
   UploadCloud, UserRound, Users, UsersRound, X,
@@ -55,6 +55,12 @@ const APP_ICON = {
   wifi: "/icons/3d/wifi.png",
   notebook: "/icons/3d/notebook.png",
   folder: "/icons/3d/folder.png",
+};
+
+const PEOPLE_ICON = {
+  female: "/icons/people/female.png",
+  male: "/icons/people/male.png",
+  earth: "/icons/people/earth.png",
 };
 
 const signalStyles = {
@@ -142,9 +148,8 @@ export default function SurveillancePortal() {
 
   return (
     <div className="portal-network-bg h-screen w-screen overflow-hidden text-slate-900 flex relative bg-[#eef4fb]">
-      <div className="pointer-events-none absolute inset-0 opacity-45" style={{ background: "radial-gradient(circle at 12% 8%, rgba(37,99,235,0.24), transparent 26%), radial-gradient(circle at 90% 12%, rgba(20,184,166,0.2), transparent 25%), radial-gradient(circle at 55% 105%, rgba(244,63,94,0.1), transparent 36%), linear-gradient(135deg, rgba(248,251,255,0.72) 0%, rgba(234,241,249,0.58) 40%, rgba(247,250,247,0.66) 100%)" }} />
+      <div className="pointer-events-none absolute inset-0 opacity-45" style={{ background: "linear-gradient(135deg, rgba(248,251,255,0.76) 0%, rgba(234,241,249,0.58) 48%, rgba(240,253,250,0.62) 100%)" }} />
       <div className="pointer-events-none absolute inset-0 opacity-[0.24]" style={{ backgroundImage: "linear-gradient(rgba(15,23,42,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,0.05) 1px, transparent 1px)", backgroundSize: "38px 38px" }} />
-      <div className="pointer-events-none absolute left-[250px] top-5 h-28 w-[520px] rounded-full bg-white/55 blur-3xl" />
 
       <aside className={`relative z-10 shrink-0 flex flex-col overflow-hidden bg-[#0b1f37]/95 text-white backdrop-blur-xl border-r border-cyan-300/18 shadow-[18px_0_60px_rgba(15,23,42,0.34)] transition-all duration-500 ease-out ${sidebarCollapsed ? "w-20" : "w-80"}`}>
         <div className="pointer-events-none absolute inset-0 opacity-95" style={{ background: "radial-gradient(circle at 12% 5%, rgba(56,189,248,0.32), transparent 22%), radial-gradient(circle at 95% 18%, rgba(37,99,235,0.32), transparent 28%), linear-gradient(180deg, rgba(255,255,255,0.08), transparent 30%), linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px)", backgroundSize: "auto, auto, auto, 28px 28px, 28px 28px" }} />
@@ -363,32 +368,63 @@ function MiniStat({ label, value, tone }: { label: string; value: string | numbe
 function OriginComparison({ disease = "all", onShowEncounters }: { disease?: DiseaseCode | "all"; onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void }) {
   const rows = originSummary(disease);
   const max = Math.max(1, ...rows.map((row) => row.count));
-  const tones: Record<string, "blue" | "emerald" | "amber" | "rose"> = { LF: "rose", LM: "blue", FF: "amber", FM: "emerald" };
+  const roots = [
+    { gender: "F" as const, label: "Female", icon: PEOPLE_ICON.female, accent: "from-rose-500 to-fuchsia-500", soft: "from-rose-50/88 to-white/82", countTone: "text-rose-700" },
+    { gender: "M" as const, label: "Male", icon: PEOPLE_ICON.male, accent: "from-blue-600 to-cyan-500", soft: "from-blue-50/88 to-white/82", countTone: "text-blue-700" },
+  ].map((root) => ({
+    ...root,
+    local: rows.find((row) => row.gender === root.gender && row.origin === "local"),
+    foreign: rows.find((row) => row.gender === root.gender && row.origin === "foreign"),
+  }));
   return (
     <Panel className="p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <p className="text-sm font-black text-slate-800">Local vs Foreign Patient Comparison</p>
-          <p className="text-xs text-slate-500">Differentiated by origin and gender for disease classification</p>
+          <p className="text-sm font-black text-slate-800">Male and female origin intelligence</p>
+          <p className="text-xs text-slate-500">Gender is the root layer; local and foreign cohorts sit underneath each branch.</p>
         </div>
-        <Sparkles className="h-4 w-4 text-blue-500" />
+        <img src={PEOPLE_ICON.earth} alt="" className="h-10 w-10 object-contain drop-shadow-[0_12px_14px_rgba(15,23,42,0.18)]" />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        {rows.map((row) => (
-          <button key={row.group} onClick={() => onShowEncounters(disease, { origin: row.origin as PatientEncounter["origin"], gender: row.gender as PatientEncounter["gender"] }, `${row.group} - ${disease === "all" ? "all diseases" : DISEASE_BY_CODE[disease].name}`)} className="text-left rounded-2xl border border-slate-100 bg-white/80 p-3 hover:shadow-lg transition-all cursor-pointer">
-            <div className="flex items-center gap-3 mb-3">
-              <IconTile icon={row.origin === "foreign" ? UsersRound : UserRound} tone={tones[row.icon]} compact />
-              <div>
-                <p className="text-sm font-black text-slate-800">{row.group}</p>
-                <p className="text-[11px] text-slate-500">{row.origin} - {row.gender === "F" ? "female" : "male"}</p>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {roots.map((root) => {
+          const total = (root.local?.count ?? 0) + (root.foreign?.count ?? 0);
+          const branches = [
+            { row: root.local, label: "Local", description: "Maldivian resident records", tone: "bg-blue-50 text-blue-700 border-blue-100" },
+            { row: root.foreign, label: "Foreign", description: "Passport/work-permit records", tone: "bg-teal-50 text-teal-700 border-teal-100" },
+          ];
+          return (
+            <div key={root.gender} className={`overflow-hidden rounded-[26px] border border-white/80 bg-gradient-to-br ${root.soft} p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.76),0_16px_34px_rgba(15,23,42,0.06)]`}>
+              <div className="flex items-center gap-4">
+                <div className="flex h-28 w-24 shrink-0 items-center justify-center">
+                  <img src={root.icon} alt="" className="max-h-28 max-w-24 object-contain drop-shadow-[0_18px_20px_rgba(15,23,42,0.14)]" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Primary cohort</p>
+                  <h3 className="text-2xl font-black tracking-tight text-slate-950">{root.label}</h3>
+                  <p className={`mt-1 font-mono text-3xl font-black ${root.countTone}`}>{total.toLocaleString()}</p>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/80">
+                    <div className={`h-full rounded-full bg-gradient-to-r ${root.accent}`} style={{ width: `${Math.max(7, (total / (max * 2)) * 100)}%` }} />
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {branches.map(({ row, label, description, tone }) => row && (
+                  <button key={`${root.gender}-${label}`} onClick={() => onShowEncounters(disease, { origin: row.origin as PatientEncounter["origin"], gender: row.gender as PatientEncounter["gender"] }, `${root.label} / ${label} - ${disease === "all" ? "all diseases" : DISEASE_BY_CODE[disease].name}`)} className="group text-left rounded-2xl border border-white/80 bg-white/74 p-3 transition-all hover:-translate-y-0.5 hover:bg-white/95 hover:shadow-[0_16px_30px_rgba(15,23,42,0.08)] cursor-pointer">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className={`rounded-xl border px-2 py-1 text-[10px] font-black uppercase ${tone}`}>{label}</span>
+                      <ChevronRight className="h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-blue-500" />
+                    </div>
+                    <p className="mt-2 text-[11px] font-semibold text-slate-500">{description}</p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className={`h-full rounded-full bg-gradient-to-r ${root.accent}`} style={{ width: `${Math.max(7, (row.count / max) * 100)}%` }} />
+                    </div>
+                    <p className="mt-2 font-mono text-2xl font-black text-slate-950">{row.count.toLocaleString()}</p>
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400" style={{ width: `${Math.max(7, (row.count / max) * 100)}%` }} />
-            </div>
-            <p className="mt-2 text-xl font-black font-mono text-slate-950">{row.count.toLocaleString()}</p>
-          </button>
-        ))}
+          );
+        })}
       </div>
     </Panel>
   );
@@ -553,10 +589,7 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
     <div className="space-y-4">
       <Panel className="p-4 flex items-center gap-3 flex-wrap">
         <span className="text-xs font-black text-slate-700 uppercase tracking-wide">Disease filter</span>
-        <select value={filterDisease} onChange={(event) => setFilterDisease(event.target.value as DiseaseCode | "all")} className="text-sm bg-white/80 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-700 cursor-pointer focus:outline-none focus:border-blue-400">
-          <option value="all">All diseases</option>
-          {DISEASES.map((disease) => <option key={disease.code} value={disease.code}>{disease.name} ({disease.icd10})</option>)}
-        </select>
+        <PatientDiseaseMenu value={filterDisease} onChange={setFilterDisease} />
         <button onClick={() => onShowEncounters(filterDisease, undefined, filterDisease === "all" ? "All patient episodes" : `${DISEASE_BY_CODE[filterDisease].name} - all episodes`)} className="ml-auto text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl px-3 py-2 cursor-pointer">Open encounter log</button>
       </Panel>
       <OriginComparison disease={filterDisease} onShowEncounters={onShowEncounters} />
@@ -587,6 +620,35 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
           })}
         </div>
       </Panel>
+    </div>
+  );
+}
+
+function PatientDiseaseMenu({ value, onChange }: { value: DiseaseCode | "all"; onChange: (value: DiseaseCode | "all") => void }) {
+  const [open, setOpen] = useState(false);
+  const selected = value === "all" ? null : DISEASE_BY_CODE[value];
+  return (
+    <div className="relative min-w-[280px]">
+      <button onClick={() => setOpen((current) => !current)} className="modern-menu-button w-full cursor-pointer">
+        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Search className="h-5 w-5" /></span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-[9px] font-black uppercase tracking-wider text-blue-600">Diagnosis</span>
+          <span className="block truncate text-sm font-black text-slate-800">{selected?.name ?? "All diseases"}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="modern-menu-popover left-0 top-[calc(100%+10px)] w-[420px]">
+          <button onClick={() => { onChange("all"); setOpen(false); }} className={`modern-menu-choice ${value === "all" ? "is-selected" : ""}`}>
+            <span><strong>All diseases</strong><small>National patient episode library</small></span>{value === "all" && <Check className="h-4 w-4" />}
+          </button>
+          {DISEASES.map((disease) => (
+            <button key={disease.code} onClick={() => { onChange(disease.code); setOpen(false); }} className={`modern-menu-choice ${value === disease.code ? "is-selected" : ""}`}>
+              <span><strong>{disease.name}</strong><small>{disease.icd10} - {disease.category}</small></span>{value === disease.code && <Check className="h-4 w-4" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -682,7 +744,7 @@ interface SeededConsultationLite {
   createdAt: string;
   status: "queued" | "reading" | "done";
   stage: "intake" | "clinical-read" | "reasoning" | "research" | "promotion";
-  assignedAgent: "MedGemma" | "DeepSeek" | "Research RAG" | "MV-AIHA Router";
+  assignedAgent: "OpenRouter Clinical" | "DeepSeek" | "Research RAG" | "MV-AIHA Router";
   priority: "routine" | "watch" | "urgent";
   confidence: number;
   progress: number;
@@ -708,7 +770,7 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
   const [queueError, setQueueError] = useState<string | null>(null);
 
   const bots = useMemo(() => [
-    { name: "MedGemma clinical reader", icon: FirstAidKit, fallback: Stethoscope, task: "reads symptoms, vitals, prescriptions, and clinician notes", model: "medgemma-local" },
+    { name: "OpenRouter clinical reader", icon: FirstAidKit, fallback: Stethoscope, task: "reads symptoms, vitals, prescriptions, and clinician notes", model: "openrouter-free" },
     { name: "DeepSeek reasoning agent", icon: PhosphorBrain, fallback: BrainCircuit, task: "checks inconsistencies, travel context, and manual judgement", model: "deepseek-r1" },
     { name: "Epi research synthesizer", icon: Robot, fallback: Microscope, task: "matches guidance, citations, thresholds, and report evidence", model: "epidemiology-rag" },
     { name: "MV-AIHA orchestrator", icon: GitBranch, fallback: Network, task: "batches high-load consultations without blocking the queue", model: "router" },
@@ -811,7 +873,7 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
         <Panel className="p-5">
           <div className="flex items-center gap-2 mb-3"><SlidersHorizontal className="h-4 w-4 text-blue-600" /><p className="text-sm font-black text-slate-800">Manual judgement loop</p></div>
           <textarea value={manualNote} onChange={(event) => setManualNote(event.target.value)} className="min-h-28 w-full resize-none rounded-3xl border border-slate-100 bg-white/80 px-4 py-3 text-sm leading-relaxed text-slate-700 outline-none focus:border-blue-200" />
-          <div className="mt-3 rounded-3xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-relaxed text-slate-700"><span className="font-black text-blue-700">DeepSeek + MedGemma response:</span> judgement accepted as contextual evidence. The orchestrator will down-rank automatic public alerting until facility exposure, travel, and prescription evidence agree.</div>
+          <div className="mt-3 rounded-3xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-relaxed text-slate-700"><span className="font-black text-blue-700">OpenRouter clinical + DeepSeek response:</span> judgement accepted as contextual evidence. The orchestrator will down-rank automatic public alerting until facility exposure, travel, and prescription evidence agree.</div>
         </Panel>
         <Panel className="p-5">
           <div className="flex items-center gap-2 mb-3"><FlaskConical className="h-4 w-4 text-blue-600" /><p className="text-sm font-black text-slate-800">Research synthesis</p></div>
@@ -846,7 +908,7 @@ function IntakeSeedRow({ item, done }: { item: SeededConsultationLite; done: boo
 }
 
 function IntakeEpisodeRow({ encounter, index, done }: { encounter: PatientEncounter; index: number; done: boolean }) {
-  const bot = ["MedGemma", "DeepSeek", "Research", "Router"][index % 4];
+  const bot = ["OpenRouter", "DeepSeek", "Research", "Router"][index % 4];
   return <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white/75 px-4 py-3"><span className={`h-9 w-9 rounded-2xl flex items-center justify-center text-xs font-black ${done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-500"}`}>{done ? "OK" : index + 1}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-800">{encounter.episodeId} · {DISEASE_BY_CODE[encounter.diseaseCode].name}</p><p className="text-[11px] text-slate-500">{bot} reading {encounter.source.replace("_", " ")} · {encounter.origin} · {encounter.onsetDate}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${done ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{done ? "done" : "reading"}</span></div>;
 }
 
@@ -876,7 +938,7 @@ function LoggingView({ logs }: { logs: LogEntry[] }) {
 
 function ReportsView({ onOpen }: { onOpen: (report: ReportMeta) => void }) {
   const modelChain = [
-    { name: "MedGemma", role: "clinical extraction", icon: Stethoscope, tone: "emerald" as const },
+    { name: "OpenRouter Clinical", role: "clinical extraction using a free/low-cost routed model", icon: Stethoscope, tone: "emerald" as const },
     { name: "DeepSeek", role: "reasoning and contradiction checks", icon: BrainCircuit, tone: "blue" as const },
     { name: "Research RAG", role: "WHO/MOH evidence and citations", icon: Microscope, tone: "violet" as const },
     { name: "MV-AIHA Router", role: "final synthesis, risk language, privacy guard", icon: Bot, tone: "amber" as const },

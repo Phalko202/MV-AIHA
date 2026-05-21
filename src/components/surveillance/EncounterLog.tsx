@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Activity, ArrowLeft, CalendarDays, Download, FileText, Filter, MapPin, Search, ShieldCheck, UserRound, X } from "lucide-react";
+import { Activity, ArrowLeft, CalendarDays, Check, ChevronDown, Download, FileText, Filter, MapPin, Search, ShieldCheck, UserRound, X } from "lucide-react";
 import {
   DISEASE_BY_CODE,
   encountersFor,
@@ -111,24 +111,30 @@ export default function EncounterLog({ disease, filter, label, onClose }: Props)
                   className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400"
                 />
               </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3 text-xs font-black text-slate-600 shadow-sm">
-                <Filter className="h-4 w-4 text-blue-500" />
-                <select value={severity} onChange={(event) => { setSeverity(event.target.value as SeverityFilter); setPage(1); }} className="bg-transparent outline-none cursor-pointer">
-                  <option value="all">All severity</option>
-                  <option value="mild">Mild</option>
-                  <option value="moderate">Moderate</option>
-                  <option value="severe">Severe</option>
-                  <option value="critical">Critical</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-3 text-xs font-black text-slate-600 shadow-sm">
-                <UserRound className="h-4 w-4 text-blue-500" />
-                <select value={origin} onChange={(event) => { setOrigin(event.target.value as OriginFilter); setPage(1); }} className="bg-transparent outline-none cursor-pointer">
-                  <option value="all">All origin</option>
-                  <option value="local">Local</option>
-                  <option value="foreign">Foreign</option>
-                </select>
-              </label>
+              <EncounterFilterMenu
+                icon={Filter}
+                label="Severity"
+                value={severity}
+                options={[
+                  { value: "all", label: "All severity", detail: "Every triage level" },
+                  { value: "mild", label: "Mild", detail: "Low acuity records" },
+                  { value: "moderate", label: "Moderate", detail: "Watch-list records" },
+                  { value: "severe", label: "Severe", detail: "High acuity records" },
+                  { value: "critical", label: "Critical", detail: "Immediate review records" },
+                ]}
+                onChange={(next) => { setSeverity(next as SeverityFilter); setPage(1); }}
+              />
+              <EncounterFilterMenu
+                icon={UserRound}
+                label="Origin"
+                value={origin}
+                options={[
+                  { value: "all", label: "All origin", detail: "Local and foreign records" },
+                  { value: "local", label: "Local", detail: "Maldivian resident records" },
+                  { value: "foreign", label: "Foreign", detail: "Passport/work-permit records" },
+                ]}
+                onChange={(next) => { setOrigin(next as OriginFilter); setPage(1); }}
+              />
               <button className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-xs font-black text-slate-600 shadow-sm hover:text-slate-950 cursor-pointer">
                 <Download className="h-4 w-4" /> Export CSV
               </button>
@@ -186,6 +192,44 @@ export default function EncounterLog({ disease, filter, label, onClose }: Props)
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function EncounterFilterMenu({
+  icon: Icon,
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  options: { value: string; label: string; detail: string }[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  return (
+    <div className="relative min-w-[190px]">
+      <button onClick={() => setOpen((current) => !current)} className="modern-menu-button w-full cursor-pointer">
+        <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Icon className="h-4 w-4" /></span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-[9px] font-black uppercase tracking-wider text-blue-600">{label}</span>
+          <span className="block truncate text-xs font-black text-slate-800">{selected.label}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="modern-menu-popover right-0 top-[calc(100%+10px)] w-[260px]">
+          {options.map((option) => (
+            <button key={option.value} onClick={() => { onChange(option.value); setOpen(false); }} className={`modern-menu-choice ${option.value === value ? "is-selected" : ""}`}>
+              <span><strong>{option.label}</strong><small>{option.detail}</small></span>{option.value === value && <Check className="h-4 w-4" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -250,7 +294,7 @@ function EncounterDetail({ encounter, facilityName }: { encounter: PatientEncoun
           <p className="text-[10px] font-black uppercase tracking-wider text-blue-600">Manual judgement and AI discussion</p>
           <textarea value={judgement} onChange={(event) => setJudgement(event.target.value)} className="mt-3 min-h-28 w-full resize-none rounded-3xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-sm leading-relaxed text-slate-700 outline-none focus:border-blue-200" />
           <div className="mt-3 grid gap-2">
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm text-slate-700"><span className="font-black text-emerald-700">MedGemma:</span> clinical evidence supports {disease.name.toLowerCase()} classification with prescription corroboration.</div>
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm text-slate-700"><span className="font-black text-emerald-700">OpenRouter clinical AI:</span> clinical evidence supports {disease.name.toLowerCase()} classification with prescription corroboration.</div>
             <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-slate-700"><span className="font-black text-blue-700">DeepSeek:</span> manual judgement added as a reasoning constraint before alert escalation.</div>
           </div>
         </section>

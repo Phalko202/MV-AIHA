@@ -9,7 +9,7 @@ interface SeededConsultation {
   createdAt: string;
   status: "queued" | "reading" | "done";
   stage: "intake" | "clinical-read" | "reasoning" | "research" | "promotion";
-  assignedAgent: "MedGemma" | "DeepSeek" | "Research RAG" | "MV-AIHA Router";
+  assignedAgent: "OpenRouter Clinical" | "DeepSeek" | "Research RAG" | "MV-AIHA Router";
   priority: "routine" | "watch" | "urgent";
   confidence: number;
   progress: number;
@@ -27,7 +27,7 @@ const diagnoses = [
 
 const facilities = ["IGMH", "HMH", "HGP2", "ADK", "TTH", "VHC", "MRH"];
 const stages: SeededConsultation["stage"][] = ["intake", "clinical-read", "reasoning", "research", "promotion"];
-const agents: SeededConsultation["assignedAgent"][] = ["MedGemma", "DeepSeek", "Research RAG", "MV-AIHA Router"];
+const agents: SeededConsultation["assignedAgent"][] = ["OpenRouter Clinical", "DeepSeek", "Research RAG", "MV-AIHA Router"];
 
 const store = globalThis as typeof globalThis & { mvAihsSeededConsultations?: SeededConsultation[] };
 
