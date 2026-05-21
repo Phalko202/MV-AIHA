@@ -146,21 +146,27 @@ function majority<T extends string>(values: Array<T | null>): { winner: T | null
  * Episode MUST already be redacted. The function will re-assert and throw
  * if any forbidden field is present.
  */
+/** True when the OpenRouter key is absent or is the placeholder value. */
+export function isAiPaused(): boolean {
+  const key = process.env.OPENROUTER_API_KEY;
+  return !key || key === "your-api-key-here" || key.startsWith("sk-or-placeholder");
+}
+
 export async function analyzeEpisodeEnsemble(episode: RedactedEpisode): Promise<EnsembleResult> {
   assertRedacted(episode);
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
+  if (isAiPaused()) {
     return {
-      diagnosis: "INSUFFICIENT_DATA",
+      diagnosis: "AI_PAUSED",
       confidence: 0,
       severity: "mild",
-      recommendedAction: "OpenRouter API key not configured — set OPENROUTER_API_KEY in .env.local",
+      recommendedAction: "AI analysis is paused. Add a valid OPENROUTER_API_KEY to .env.local to enable.",
       agreement: 0,
       votes: [],
       flaggedForReview: true,
       modelCount: 0,
     };
   }
+  const apiKey = process.env.OPENROUTER_API_KEY!;
 
   const votes = await Promise.all(MEDICAL_MODELS.map((model) => callOne(model, episode, apiKey)));
   const successful = votes.filter((vote) => vote.diagnosis && vote.diagnosis !== "INSUFFICIENT_DATA");

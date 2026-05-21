@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import {
   Activity, AlertTriangle, BarChart3, Bot, BrainCircuit, Building2, Check, ChevronDown, ChevronRight, ClipboardCheck, ClipboardList,
   Database, FileCheck, FileText, FlaskConical, Globe, Image, LayoutDashboard,
-  Map, Microscope, Network, Play, RefreshCw, ScrollText, Search, ShieldAlert, SlidersHorizontal, Sparkles, Stethoscope,
+  Lock, Map, Microscope, Network, Play, RefreshCw, ScrollText, Search, ShieldAlert, SlidersHorizontal, Sparkles, Stethoscope,
   UploadCloud, UserRound, Users, UsersRound, X,
   Thermometer, Bug, GlassWater, Flame, Brain, HeartPulse, Droplet, Dna,
 } from "lucide-react";
@@ -104,7 +104,7 @@ function formatMvtTime() {
   return `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}:${date.getSeconds().toString().padStart(2, "0")}`;
 }
 
-export default function SurveillancePortal() {
+export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: boolean }) {
   const [view, setView] = useState<SidebarView>("dashboard");
   const [summary] = useState<DashboardSummary | null>(() => fetchDashboardSummary());
   const [incidents, setIncidents] = useState<IncidentEvent[]>([]);
@@ -136,7 +136,7 @@ export default function SurveillancePortal() {
 
   const liveEncounters = useMemo(() => {
     if (view !== "analytics") return encountersFor("all");
-    return filterAnalyticsEncounters(encountersFor(analyticsFilters.diagnosis), analyticsFilters);
+    return filterAnalyticsEncounters(encountersFor(analyticsFilters.diagnosis as DiseaseCode | "all"), analyticsFilters);
   }, [view, analyticsFilters]);
 
   const headerStats = useMemo(() => {
@@ -164,7 +164,15 @@ export default function SurveillancePortal() {
   };
 
   return (
-    <div className="portal-network-bg h-screen w-screen overflow-hidden text-slate-900 flex relative bg-[#eef4fb]">
+    <>
+      {/* AI PAUSED BANNER — fixed top bar, does not affect layout */}
+      {aiPaused && (
+        <div className="fixed top-0 inset-x-0 z-[100] flex items-center justify-center gap-2.5 bg-amber-400/97 backdrop-blur-sm px-4 py-2 text-amber-950 text-sm font-semibold border-b border-amber-500/60">
+          <Lock className="h-4 w-4 shrink-0" />
+          <span>AI analysis is paused — add a valid <code className="font-mono bg-amber-950/10 px-1 rounded">OPENROUTER_API_KEY</code> to <code className="font-mono bg-amber-950/10 px-1 rounded">.env.local</code> to enable AI reports and episode analysis.</span>
+        </div>
+      )}
+      <div className={`portal-network-bg h-screen w-screen overflow-hidden text-slate-900 flex relative bg-[#eef4fb] ${aiPaused ? "pt-10" : ""}`}>
       <div className="pointer-events-none absolute inset-0 opacity-45" style={{ background: "linear-gradient(135deg, rgba(248,251,255,0.76) 0%, rgba(234,241,249,0.58) 48%, rgba(240,253,250,0.62) 100%)" }} />
       <div className="pointer-events-none absolute inset-0 opacity-[0.24]" style={{ backgroundImage: "linear-gradient(rgba(15,23,42,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,0.05) 1px, transparent 1px)", backgroundSize: "38px 38px" }} />
 
@@ -246,14 +254,15 @@ export default function SurveillancePortal() {
           {view === "foreignAudit" && <ForeignAuditView onShowEncounters={showEncounters} />}
           {view === "fetching" && <LiveFetchingView onShowEncounters={showEncounters} />}
           {view === "logging" && <LoggingView logs={logs} />}
-          {view === "reports" && <ReportsView onOpen={setSelectedReport} analyticsFilters={analyticsFilters} />}
+          {view === "reports" && <ReportsView onOpen={setSelectedReport} analyticsFilters={analyticsFilters} aiPaused={aiPaused} />}
         </main>
       </div>
 
       {selectedFacility && <FacilityOverlay facility={selectedFacility} onClose={() => setSelectedFacility(null)} onShowEncounters={showEncounters} />}
       {encounterLog && <EncounterLog disease={encounterLog.disease} filter={encounterLog.filter} label={encounterLog.label} onClose={() => setEncounterLog(null)} />}
       {selectedReport && <ReportViewer meta={selectedReport} onClose={() => setSelectedReport(null)} />}
-    </div>
+    </div>{/* end portal-network-bg */}
+    </> 
   );
 }
 
@@ -1030,7 +1039,7 @@ function LoggingView({ logs }: { logs: LogEntry[] }) {
   );
 }
 
-function ReportsView({ onOpen, analyticsFilters }: { onOpen: (report: ReportMeta) => void; analyticsFilters: AnalyticsFilterState }) {
+function ReportsView({ onOpen, analyticsFilters, aiPaused }: { onOpen: (report: ReportMeta) => void; analyticsFilters: AnalyticsFilterState; aiPaused: boolean }) {
   type GeneratedRun = {
     meta: ReportMeta;
     markdown: string;
@@ -1098,14 +1107,14 @@ function ReportsView({ onOpen, analyticsFilters }: { onOpen: (report: ReportMeta
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Live generator</p>
             <h2 className="text-xl font-black tracking-tight text-slate-950">Generate a privacy-safe surveillance report</h2>
-            <p className="text-xs text-slate-500 max-w-xl">Pulls live signal from {analyticsFilters.diagnosis === "all" ? "all 10 tracked diseases" : DISEASE_BY_CODE[analyticsFilters.diagnosis].name}{analyticsFilters.facilities[0] ? ` at ${FACILITIES.find((facility) => facility.id === analyticsFilters.facilities[0])?.shortName}` : ""}, redacts every patient through <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">src/lib/redact.ts</code>, then sends only de-identified clinical text into the three-layer OpenRouter stack configured for MV-AIHS.</p>
+            <p className="text-xs text-slate-500 max-w-xl">Pulls live signal from {analyticsFilters.diagnosis === "all" ? "all 10 tracked diseases" : (DISEASE_BY_CODE[analyticsFilters.diagnosis as DiseaseCode]?.name ?? analyticsFilters.diagnosis)}{analyticsFilters.facilities[0] ? ` at ${FACILITIES.find((facility) => facility.id === analyticsFilters.facilities[0])?.shortName}` : ""}, redacts every patient through <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">src/lib/redact.ts</code>, then sends only de-identified clinical text into the three-layer OpenRouter stack configured for MV-AIHS.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {(["daily", "weekly", "outbreak", "facility", "foreign"] as const).map((option) => (
               <button key={option} onClick={() => setTemplate(option)} className={`rounded-2xl px-3 py-2 text-[11px] font-black capitalize transition-all cursor-pointer ${template === option ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-[0_14px_28px_rgba(37,99,235,0.22)]" : "bg-white text-slate-600 border border-slate-200 hover:text-slate-900"}`}>{option}</button>
             ))}
-            <button onClick={handleGenerate} disabled={generating} className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-xs font-black text-white shadow-[0_14px_28px_rgba(16,185,129,0.26)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
-              <Sparkles className="h-3.5 w-3.5" />{generating ? "Generating…" : "Generate report"}
+            <button onClick={handleGenerate} disabled={generating || aiPaused} className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-xs font-black text-white shadow-[0_14px_28px_rgba(16,185,129,0.26)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
+              {aiPaused ? <Lock className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}{aiPaused ? "AI paused" : generating ? "Generating…" : "Generate report"}
             </button>
           </div>
         </div>

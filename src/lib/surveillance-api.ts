@@ -282,100 +282,186 @@ function makeIdentifierKind(origin: CaseOrigin, rand: () => number): IdentifierK
   return "unknown_foreign";
 }
 
-function buildPatientCohort() {
-  const rand = mulberry32(20260520);
-  const patients: PatientProfile[] = [];
-  const encounters: PatientEncounter[] = [];
-  const weightedDiseasePool: DiseaseCode[] = ["dengue", "dengue", "ili", "ili", "gastro", "pneumonia", "hfmd", "influenza", "diarrhea", "dehydration", "febrile_seizure", "chest_pain"];
-  let episodeCounter = 0;
+/* ------------------------------------------------------------------ */
+/*  50 PRE-SEEDED ENCOUNTERS — baseline dataset already loaded         */
+/* ------------------------------------------------------------------ */
+const PRE_SEEDED_ENCOUNTERS: PatientEncounter[] = [
+  { id:"ENC-000001", patientKey:"LOC-0001", episodeId:"EP-2026-0001", diseaseCode:"dengue",         facilityId:"igmh",         ageBracket:"20-29", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-01", admissionDate:"2026-05-02", severity:"moderate", outcome:"recovered",  comorbidities:["None"],                          symptoms:["high fever","retro-orbital pain"],              prescriptionSignals:["paracetamol","CBC repeat"],                             source:"ehr",               vaccinated:undefined, aiConfidence:0.94, lengthOfStayDays:3, hospitalized:true },
+  { id:"ENC-000002", patientKey:"FOR-0001", episodeId:"EP-2026-0002", diseaseCode:"dengue",         facilityId:"hulhumale",    ageBracket:"30-39", gender:"M", origin:"foreign", nationalityGroup:"South Asian",     identifierKind:"passport",         atoll:"Kaafu",      onsetDate:"2026-05-03", admissionDate:"2026-05-03", severity:"severe",   outcome:"referred",   comorbidities:["Hypertension"],                  symptoms:["high fever","rash","platelet drop"],            prescriptionSignals:["paracetamol","CBC repeat","avoid NSAIDs"],              source:"facility_registry", vaccinated:undefined, aiConfidence:0.91, lengthOfStayDays:5, hospitalized:true },
+  { id:"ENC-000003", patientKey:"LOC-0002", episodeId:"EP-2026-0003", diseaseCode:"ili",            facilityId:"igmh",         ageBracket:"5-9",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-02", admissionDate:"2026-05-02", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["fever","cough"],                                prescriptionSignals:["paracetamol","oral fluids"],                            source:"ehr",               vaccinated:true,  aiConfidence:0.88, lengthOfStayDays:1, hospitalized:false },
+  { id:"ENC-000004", patientKey:"LOC-0003", episodeId:"EP-2026-0004", diseaseCode:"pneumonia",      facilityId:"igmh",         ageBracket:"60-69", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-04-28", admissionDate:"2026-04-29", severity:"severe",   outcome:"recovered",  comorbidities:["Diabetes","Hypertension"],        symptoms:["productive cough","tachypnea","low oxygen saturation"],           prescriptionSignals:["amoxicillin-clavulanate","chest x-ray"],                source:"ehr",               vaccinated:true,  aiConfidence:0.96, lengthOfStayDays:6, hospitalized:true },
+  { id:"ENC-000005", patientKey:"LOC-0004", episodeId:"EP-2026-0005", diseaseCode:"gastro",         facilityId:"hulhumale",    ageBracket:"0-4",   gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-05", admissionDate:"2026-05-05", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["vomiting","abdominal cramps"],                  prescriptionSignals:["ORS","zinc"],                                          source:"ehr",               vaccinated:false, aiConfidence:0.87, lengthOfStayDays:1, hospitalized:false },
+  { id:"ENC-000006", patientKey:"FOR-0002", episodeId:"EP-2026-0006", diseaseCode:"dengue",         facilityId:"hulhumale_gp2",ageBracket:"20-29", gender:"F", origin:"foreign", nationalityGroup:"South-East Asian",identifierKind:"hospital_number",  atoll:"Kaafu",      onsetDate:"2026-05-06", admissionDate:"2026-05-06", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["high fever","rash"],                            prescriptionSignals:["paracetamol","avoid NSAIDs"],                          source:"facility_registry", vaccinated:undefined, aiConfidence:0.89, lengthOfStayDays:2, hospitalized:false },
+  { id:"ENC-000007", patientKey:"LOC-0005", episodeId:"EP-2026-0007", diseaseCode:"febrile_seizure",facilityId:"igmh",         ageBracket:"0-4",   gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-04", admissionDate:"2026-05-04", severity:"moderate", outcome:"recovered",  comorbidities:["None"],                          symptoms:["fever","brief seizure"],                        prescriptionSignals:["antipyretic","observation"],                            source:"ehr",               vaccinated:undefined, aiConfidence:0.93, lengthOfStayDays:1, hospitalized:true },
+  { id:"ENC-000008", patientKey:"LOC-0006", episodeId:"EP-2026-0008", diseaseCode:"influenza",      facilityId:"adk",          ageBracket:"40-49", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-07", admissionDate:"2026-05-07", severity:"mild",     outcome:"recovered",  comorbidities:["Asthma"],                        symptoms:["fever","cough","body ache"],                    prescriptionSignals:["oseltamivir","paracetamol"],                            source:"ehr",               vaccinated:false, aiConfidence:0.97, lengthOfStayDays:2, hospitalized:false },
+  { id:"ENC-000009", patientKey:"FOR-0003", episodeId:"EP-2026-0009", diseaseCode:"dengue",         facilityId:"adk",          ageBracket:"30-39", gender:"M", origin:"foreign", nationalityGroup:"Middle Eastern",  identifierKind:"passport",         atoll:"Kaafu",      onsetDate:"2026-05-08", admissionDate:"2026-05-08", severity:"critical", outcome:"referred",   comorbidities:["Diabetes"],                      symptoms:["high fever","platelet drop","rash"],            prescriptionSignals:["paracetamol","CBC repeat","avoid NSAIDs"],              source:"prescription_image",vaccinated:undefined, aiConfidence:0.91, lengthOfStayDays:7, hospitalized:true },
+  { id:"ENC-000010", patientKey:"LOC-0007", episodeId:"EP-2026-0010", diseaseCode:"diarrhea",       facilityId:"hulhumale",    ageBracket:"10-19", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-09", admissionDate:"2026-05-09", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["watery stool","abdominal pain"],                prescriptionSignals:["ORS","stool test if persistent"],                      source:"ehr",               vaccinated:false, aiConfidence:0.85, lengthOfStayDays:1, hospitalized:false },
+  { id:"ENC-000011", patientKey:"LOC-0008", episodeId:"EP-2026-0011", diseaseCode:"chest_pain",     facilityId:"igmh",         ageBracket:"50-59", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-10", admissionDate:"2026-05-10", severity:"moderate", outcome:"referred",   comorbidities:["Hypertension","Diabetes"],        symptoms:["chest pressure","shortness of breath"],         prescriptionSignals:["ECG","aspirin if indicated","troponin"],                source:"ehr",               vaccinated:undefined, aiConfidence:0.92, lengthOfStayDays:2, hospitalized:true },
+  { id:"ENC-000012", patientKey:"LOC-0009", episodeId:"EP-2026-0012", diseaseCode:"ili",            facilityId:"krh",          ageBracket:"30-39", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Haa Dhaalu", onsetDate:"2026-05-01", admissionDate:"2026-05-01", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["fever","sore throat","myalgia"],                prescriptionSignals:["paracetamol","oral fluids"],                            source:"ehr",               vaccinated:true,  aiConfidence:0.86, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000013", patientKey:"FOR-0004", episodeId:"EP-2026-0013", diseaseCode:"hfmd",           facilityId:"hulhumale_gp2",ageBracket:"0-4",   gender:"M", origin:"foreign", nationalityGroup:"South Asian",     identifierKind:"hospital_number",  atoll:"Kaafu",      onsetDate:"2026-05-12", admissionDate:"2026-05-12", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["mouth ulcers","palm rash","fever"],             prescriptionSignals:["oral analgesic","hydration"],                          source:"facility_registry", vaccinated:undefined, aiConfidence:0.88, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000014", patientKey:"LOC-0010", episodeId:"EP-2026-0014", diseaseCode:"dehydration",    facilityId:"aeh",          ageBracket:"70+",   gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Addu",       onsetDate:"2026-05-03", admissionDate:"2026-05-03", severity:"severe",   outcome:"recovered",  comorbidities:["CKD"],                           symptoms:["reduced intake","dry mucosa","dizziness"],      prescriptionSignals:["ORS","IV saline if severe","electrolytes"],            source:"ehr",               vaccinated:undefined, aiConfidence:0.90, lengthOfStayDays:3, hospitalized:true },
+  { id:"ENC-000015", patientKey:"LOC-0011", episodeId:"EP-2026-0015", diseaseCode:"pneumonia",      facilityId:"urh",          ageBracket:"50-59", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Raa",        onsetDate:"2026-05-04", admissionDate:"2026-05-05", severity:"moderate", outcome:"recovered",  comorbidities:["COPD"],                          symptoms:["productive cough","low oxygen saturation"],     prescriptionSignals:["amoxicillin-clavulanate","oxygen if low saturation"],  source:"ehr",               vaccinated:true,  aiConfidence:0.94, lengthOfStayDays:4, hospitalized:true },
+  { id:"ENC-000016", patientKey:"FOR-0005", episodeId:"EP-2026-0016", diseaseCode:"dengue",         facilityId:"hulhumale",    ageBracket:"20-29", gender:"F", origin:"foreign", nationalityGroup:"South-East Asian",identifierKind:"unknown_foreign",  atoll:"Kaafu",      onsetDate:"2026-05-13", admissionDate:"2026-05-13", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["high fever","retro-orbital pain","rash"],       prescriptionSignals:["paracetamol","CBC repeat"],                             source:"facility_registry", vaccinated:undefined, aiConfidence:0.87, lengthOfStayDays:2, hospitalized:false },
+  { id:"ENC-000017", patientKey:"LOC-0012", episodeId:"EP-2026-0017", diseaseCode:"gastro",         facilityId:"fmh",          ageBracket:"20-29", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Gnaviyani",  onsetDate:"2026-05-06", admissionDate:"2026-05-06", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["vomiting","loose stools"],                      prescriptionSignals:["ORS","antiemetic"],                                    source:"ehr",               vaccinated:false, aiConfidence:0.83, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000018", patientKey:"LOC-0013", episodeId:"EP-2026-0018", diseaseCode:"ili",            facilityId:"thr",          ageBracket:"10-19", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Gaafu Dhaalu",onsetDate:"2026-05-08",admissionDate:"2026-05-08", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["fever","cough","sore throat"],                  prescriptionSignals:["paracetamol","oral fluids"],                            source:"ehr",               vaccinated:false, aiConfidence:0.82, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000019", patientKey:"LOC-0014", episodeId:"EP-2026-0019", diseaseCode:"hfmd",           facilityId:"hulhumale_gp2",ageBracket:"0-4",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-14", admissionDate:"2026-05-14", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["mouth ulcers","sole rash","fever"],             prescriptionSignals:["oral analgesic","school exclusion advice"],             source:"ehr",               vaccinated:undefined, aiConfidence:0.91, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000020", patientKey:"LOC-0015", episodeId:"EP-2026-0020", diseaseCode:"influenza",      facilityId:"treetop",      ageBracket:"40-49", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-10", admissionDate:"2026-05-10", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["fever","body ache","positive rapid test"],      prescriptionSignals:["oseltamivir","paracetamol","isolation advice"],         source:"ehr",               vaccinated:false, aiConfidence:0.98, lengthOfStayDays:1, hospitalized:false },
+  { id:"ENC-000021", patientKey:"FOR-0006", episodeId:"EP-2026-0021", diseaseCode:"dengue",         facilityId:"adk",          ageBracket:"30-39", gender:"F", origin:"foreign", nationalityGroup:"European",        identifierKind:"passport",         atoll:"Kaafu",      onsetDate:"2026-05-11", admissionDate:"2026-05-11", severity:"moderate", outcome:"recovered",  comorbidities:["None"],                          symptoms:["high fever","retro-orbital pain"],              prescriptionSignals:["paracetamol","avoid NSAIDs"],                          source:"ehr",               vaccinated:undefined, aiConfidence:0.89, lengthOfStayDays:3, hospitalized:true },
+  { id:"ENC-000022", patientKey:"LOC-0016", episodeId:"EP-2026-0022", diseaseCode:"diarrhea",       facilityId:"muli",         ageBracket:"0-4",   gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Meemu",      onsetDate:"2026-05-02", admissionDate:"2026-05-02", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["watery stool","dehydration"],                   prescriptionSignals:["ORS","zinc"],                                          source:"ehr",               vaccinated:false, aiConfidence:0.80, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000023", patientKey:"LOC-0017", episodeId:"EP-2026-0023", diseaseCode:"chest_pain",     facilityId:"adk",          ageBracket:"60-69", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-15", admissionDate:"2026-05-15", severity:"critical", outcome:"referred",   comorbidities:["Hypertension","Obesity"],         symptoms:["chest pressure","radiating pain","shortness of breath"],         prescriptionSignals:["ECG","troponin"],                                      source:"ehr",               vaccinated:undefined, aiConfidence:0.95, lengthOfStayDays:4, hospitalized:true },
+  { id:"ENC-000024", patientKey:"FOR-0007", episodeId:"EP-2026-0024", diseaseCode:"gastro",         facilityId:"hulhumale_gp2",ageBracket:"20-29", gender:"M", origin:"foreign", nationalityGroup:"South Asian",     identifierKind:"hospital_number",  atoll:"Kaafu",      onsetDate:"2026-05-16", admissionDate:"2026-05-16", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["vomiting","abdominal cramps","loose stools"],   prescriptionSignals:["ORS","zinc","antiemetic"],                             source:"facility_registry", vaccinated:false, aiConfidence:0.86, lengthOfStayDays:1, hospitalized:false },
+  { id:"ENC-000025", patientKey:"LOC-0018", episodeId:"EP-2026-0025", diseaseCode:"ili",            facilityId:"igmh",         ageBracket:"70+",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-16", admissionDate:"2026-05-17", severity:"severe",   outcome:"active",     comorbidities:["Diabetes","COPD"],               symptoms:["fever","cough","myalgia"],                      prescriptionSignals:["paracetamol","oseltamivir if high-risk"],               source:"ehr",               vaccinated:false, aiConfidence:0.91, lengthOfStayDays:3, hospitalized:true },
+  { id:"ENC-000026", patientKey:"FOR-0008", episodeId:"EP-2026-0026", diseaseCode:"dengue",         facilityId:"hulhumale",    ageBracket:"20-29", gender:"M", origin:"foreign", nationalityGroup:"South Asian",     identifierKind:"passport",         atoll:"Kaafu",      onsetDate:"2026-05-17", admissionDate:"2026-05-17", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["high fever","platelet drop"],                   prescriptionSignals:["paracetamol","CBC repeat"],                             source:"facility_registry", vaccinated:undefined, aiConfidence:0.93, lengthOfStayDays:2, hospitalized:false },
+  { id:"ENC-000027", patientKey:"LOC-0019", episodeId:"EP-2026-0027", diseaseCode:"pneumonia",      facilityId:"igmh",         ageBracket:"0-4",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-09", admissionDate:"2026-05-10", severity:"severe",   outcome:"recovered",  comorbidities:["None"],                          symptoms:["tachypnea","low oxygen saturation"],            prescriptionSignals:["amoxicillin-clavulanate","oxygen if low saturation"],  source:"ehr",               vaccinated:true,  aiConfidence:0.97, lengthOfStayDays:4, hospitalized:true },
+  { id:"ENC-000028", patientKey:"LOC-0020", episodeId:"EP-2026-0028", diseaseCode:"hfmd",           facilityId:"hulhumale_gp2",ageBracket:"5-9",   gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-18", admissionDate:"2026-05-18", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["mouth ulcers","palm rash"],                     prescriptionSignals:["oral analgesic","hydration"],                          source:"ehr",               vaccinated:undefined, aiConfidence:0.84, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000029", patientKey:"LOC-0021", episodeId:"EP-2026-0029", diseaseCode:"dehydration",    facilityId:"hulhumale",    ageBracket:"0-4",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-19", admissionDate:"2026-05-19", severity:"moderate", outcome:"recovered",  comorbidities:["None"],                          symptoms:["reduced intake","dizziness"],                   prescriptionSignals:["ORS","IV saline if severe"],                           source:"ehr",               vaccinated:undefined, aiConfidence:0.88, lengthOfStayDays:1, hospitalized:true },
+  { id:"ENC-000030", patientKey:"FOR-0009", episodeId:"EP-2026-0030", diseaseCode:"dengue",         facilityId:"hulhumale_gp2",ageBracket:"30-39", gender:"F", origin:"foreign", nationalityGroup:"South-East Asian",identifierKind:"hospital_number",  atoll:"Kaafu",      onsetDate:"2026-05-19", admissionDate:"2026-05-19", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["high fever","rash","retro-orbital pain"],       prescriptionSignals:["paracetamol","CBC repeat","avoid NSAIDs"],              source:"facility_registry", vaccinated:undefined, aiConfidence:0.90, lengthOfStayDays:2, hospitalized:false },
+  { id:"ENC-000031", patientKey:"LOC-0022", episodeId:"EP-2026-0031", diseaseCode:"ili",            facilityId:"adk",          ageBracket:"30-39", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-19", admissionDate:"2026-05-19", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["fever","cough","sore throat"],                  prescriptionSignals:["paracetamol","oral fluids"],                            source:"ehr",               vaccinated:true,  aiConfidence:0.82, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000032", patientKey:"LOC-0023", episodeId:"EP-2026-0032", diseaseCode:"influenza",      facilityId:"krh",          ageBracket:"5-9",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Haa Dhaalu", onsetDate:"2026-05-14", admissionDate:"2026-05-14", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["fever","cough","body ache","positive rapid test"],prescriptionSignals:["oseltamivir","paracetamol"],                            source:"ehr",               vaccinated:false, aiConfidence:0.96, lengthOfStayDays:1, hospitalized:false },
+  { id:"ENC-000033", patientKey:"FOR-0010", episodeId:"EP-2026-0033", diseaseCode:"dengue",         facilityId:"hulhumale",    ageBracket:"40-49", gender:"M", origin:"foreign", nationalityGroup:"South Asian",     identifierKind:"unknown_foreign",  atoll:"Kaafu",      onsetDate:"2026-05-20", admissionDate:"2026-05-20", severity:"severe",   outcome:"active",     comorbidities:["Hypertension"],                  symptoms:["high fever","platelet drop","rash"],            prescriptionSignals:["paracetamol","CBC repeat"],                             source:"facility_registry", vaccinated:undefined, aiConfidence:0.88, lengthOfStayDays:3, hospitalized:true },
+  { id:"ENC-000034", patientKey:"LOC-0024", episodeId:"EP-2026-0034", diseaseCode:"gastro",         facilityId:"igmh",         ageBracket:"20-29", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-20", admissionDate:"2026-05-20", severity:"mild",     outcome:"active",     comorbidities:["None"],                          symptoms:["vomiting","abdominal cramps"],                  prescriptionSignals:["ORS","zinc"],                                          source:"ehr",               vaccinated:false, aiConfidence:0.83, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000035", patientKey:"LOC-0025", episodeId:"EP-2026-0035", diseaseCode:"febrile_seizure",facilityId:"igmh",         ageBracket:"0-4",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-20", admissionDate:"2026-05-20", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["fever","brief seizure","post-ictal drowsiness"],prescriptionSignals:["antipyretic","observation"],                            source:"ehr",               vaccinated:undefined, aiConfidence:0.93, lengthOfStayDays:1, hospitalized:true },
+  { id:"ENC-000036", patientKey:"LOC-0026", episodeId:"EP-2026-0036", diseaseCode:"diarrhea",       facilityId:"urh",          ageBracket:"10-19", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Raa",        onsetDate:"2026-05-13", admissionDate:"2026-05-13", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["watery stool","abdominal pain"],                prescriptionSignals:["ORS","stool test if persistent"],                      source:"ehr",               vaccinated:false, aiConfidence:0.81, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000037", patientKey:"LOC-0027", episodeId:"EP-2026-0037", diseaseCode:"chest_pain",     facilityId:"treetop",      ageBracket:"50-59", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-12", admissionDate:"2026-05-12", severity:"moderate", outcome:"recovered",  comorbidities:["Hypertension"],                  symptoms:["chest pressure","shortness of breath"],         prescriptionSignals:["ECG","aspirin if indicated"],                          source:"ehr",               vaccinated:undefined, aiConfidence:0.92, lengthOfStayDays:2, hospitalized:true },
+  { id:"ENC-000038", patientKey:"FOR-0011", episodeId:"EP-2026-0038", diseaseCode:"ili",            facilityId:"adk",          ageBracket:"20-29", gender:"F", origin:"foreign", nationalityGroup:"European",        identifierKind:"passport",         atoll:"Kaafu",      onsetDate:"2026-05-11", admissionDate:"2026-05-11", severity:"mild",     outcome:"recovered",  comorbidities:["None"],                          symptoms:["fever","cough"],                                prescriptionSignals:["paracetamol","oral fluids"],                            source:"prescription_image",vaccinated:true,  aiConfidence:0.84, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000039", patientKey:"LOC-0028", episodeId:"EP-2026-0039", diseaseCode:"pneumonia",      facilityId:"gan_lh",       ageBracket:"40-49", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Laamu",      onsetDate:"2026-05-07", admissionDate:"2026-05-08", severity:"moderate", outcome:"recovered",  comorbidities:["Asthma"],                        symptoms:["productive cough","tachypnea"],                 prescriptionSignals:["amoxicillin-clavulanate","chest x-ray"],                source:"ehr",               vaccinated:true,  aiConfidence:0.91, lengthOfStayDays:3, hospitalized:true },
+  { id:"ENC-000040", patientKey:"LOC-0029", episodeId:"EP-2026-0040", diseaseCode:"dehydration",    facilityId:"thr",          ageBracket:"70+",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Gaafu Dhaalu",onsetDate:"2026-05-10",admissionDate:"2026-05-10", severity:"moderate", outcome:"recovered",  comorbidities:["CKD"],                           symptoms:["dry mucosa","dizziness","reduced intake"],      prescriptionSignals:["ORS","electrolytes"],                                  source:"ehr",               vaccinated:undefined, aiConfidence:0.86, lengthOfStayDays:2, hospitalized:true },
+  { id:"ENC-000041", patientKey:"FOR-0012", episodeId:"EP-2026-0041", diseaseCode:"dengue",         facilityId:"hulhumale",    ageBracket:"20-29", gender:"M", origin:"foreign", nationalityGroup:"South Asian",     identifierKind:"passport",         atoll:"Kaafu",      onsetDate:"2026-05-20", admissionDate:"2026-05-21", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["high fever","retro-orbital pain","platelet drop"],prescriptionSignals:["paracetamol","CBC repeat","avoid NSAIDs"],             source:"facility_registry", vaccinated:undefined, aiConfidence:0.92, lengthOfStayDays:1, hospitalized:false },
+  { id:"ENC-000042", patientKey:"LOC-0030", episodeId:"EP-2026-0042", diseaseCode:"hfmd",           facilityId:"hulhumale_gp2",ageBracket:"0-4",   gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"mild",     outcome:"active",     comorbidities:["None"],                          symptoms:["mouth ulcers","palm rash","sole rash","fever"],  prescriptionSignals:["oral analgesic","hydration","school exclusion advice"],source:"ehr",               vaccinated:undefined, aiConfidence:0.90, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000043", patientKey:"LOC-0031", episodeId:"EP-2026-0043", diseaseCode:"influenza",      facilityId:"igmh",         ageBracket:"60-69", gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"moderate", outcome:"active",     comorbidities:["Diabetes","Hypertension"],        symptoms:["fever","cough","body ache"],                    prescriptionSignals:["oseltamivir","paracetamol"],                            source:"ehr",               vaccinated:false, aiConfidence:0.95, lengthOfStayDays:1, hospitalized:true },
+  { id:"ENC-000044", patientKey:"LOC-0032", episodeId:"EP-2026-0044", diseaseCode:"ili",            facilityId:"hulhumale",    ageBracket:"10-19", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"mild",     outcome:"active",     comorbidities:["None"],                          symptoms:["fever","cough","sore throat"],                  prescriptionSignals:["paracetamol","oral fluids"],                            source:"ehr",               vaccinated:true,  aiConfidence:0.87, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000045", patientKey:"FOR-0013", episodeId:"EP-2026-0045", diseaseCode:"dengue",         facilityId:"hulhumale_gp2",ageBracket:"30-39", gender:"F", origin:"foreign", nationalityGroup:"South-East Asian",identifierKind:"hospital_number",  atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["high fever","rash"],                            prescriptionSignals:["paracetamol","CBC repeat"],                             source:"facility_registry", vaccinated:undefined, aiConfidence:0.88, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000046", patientKey:"LOC-0033", episodeId:"EP-2026-0046", diseaseCode:"gastro",         facilityId:"adk",          ageBracket:"20-29", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"mild",     outcome:"active",     comorbidities:["None"],                          symptoms:["vomiting","abdominal cramps","loose stools"],   prescriptionSignals:["ORS","zinc","antiemetic"],                             source:"ehr",               vaccinated:false, aiConfidence:0.81, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000047", patientKey:"LOC-0034", episodeId:"EP-2026-0047", diseaseCode:"diarrhea",       facilityId:"igmh",         ageBracket:"0-4",   gender:"F", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"mild",     outcome:"active",     comorbidities:["None"],                          symptoms:["watery stool","abdominal pain","dehydration"],  prescriptionSignals:["ORS","zinc"],                                          source:"ehr",               vaccinated:false, aiConfidence:0.80, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000048", patientKey:"LOC-0035", episodeId:"EP-2026-0048", diseaseCode:"chest_pain",     facilityId:"igmh",         ageBracket:"50-59", gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"severe",   outcome:"active",     comorbidities:["Hypertension","Obesity"],         symptoms:["chest pressure","shortness of breath","radiating pain"],         prescriptionSignals:["ECG","aspirin if indicated","troponin"],                source:"ehr",               vaccinated:undefined, aiConfidence:0.94, lengthOfStayDays:0, hospitalized:true },
+  { id:"ENC-000049", patientKey:"FOR-0014", episodeId:"EP-2026-0049", diseaseCode:"dengue",         facilityId:"adk",          ageBracket:"20-29", gender:"M", origin:"foreign", nationalityGroup:"Middle Eastern",  identifierKind:"passport",         atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["high fever","retro-orbital pain","rash","platelet drop"],        prescriptionSignals:["paracetamol","CBC repeat","avoid NSAIDs"],              source:"ehr",               vaccinated:undefined, aiConfidence:0.91, lengthOfStayDays:0, hospitalized:false },
+  { id:"ENC-000050", patientKey:"LOC-0036", episodeId:"EP-2026-0050", diseaseCode:"febrile_seizure",facilityId:"igmh",         ageBracket:"0-4",   gender:"M", origin:"local",   nationalityGroup:"Maldivian",      identifierKind:"local_id",         atoll:"Kaafu",      onsetDate:"2026-05-21", admissionDate:"2026-05-21", severity:"moderate", outcome:"active",     comorbidities:["None"],                          symptoms:["fever","brief seizure"],                        prescriptionSignals:["antipyretic","observation","rescue diazepam if prolonged"],source:"ehr",           vaccinated:undefined, aiConfidence:0.93, lengthOfStayDays:0, hospitalized:true },
+];
 
-  for (let p = 0; p < 126; p++) {
-    const origin: CaseOrigin = p % 3 === 0 || p % 7 === 0 ? "foreign" : "local";
+/* ------------------------------------------------------------------ */
+/*  SEEDED ENCOUNTER GENERATOR — deterministic, never random           */
+/*  Generates SEED_COUNT additional encounters beyond the 50 above     */
+/* ------------------------------------------------------------------ */
+const SEED_COUNT = 980; // total = 50 + 980 = 1,030 encounters
+
+function buildSeededEncounters(): PatientEncounter[] {
+  const rand = mulberry32(20260521);
+  const result: PatientEncounter[] = [];
+  const weightedDiseasePool: DiseaseCode[] = [
+    "dengue","dengue","dengue","ili","ili","ili","gastro","gastro",
+    "pneumonia","pneumonia","hfmd","influenza","diarrhea","diarrhea",
+    "dehydration","febrile_seizure","chest_pain",
+  ];
+
+  for (let i = 0; i < SEED_COUNT; i++) {
+    const idx = PRE_SEEDED_ENCOUNTERS.length + i;
+    const origin: CaseOrigin = rand() < 0.35 ? "foreign" : "local";
     const gender: "M" | "F" = rand() > 0.52 ? "F" : "M";
     const ageBracket = AGE_BRACKETS[Math.floor(rand() * AGE_BRACKETS.length)];
     const nationalityGroup: PatientEncounter["nationalityGroup"] = origin === "local"
       ? "Maldivian"
-      : (["South Asian", "South-East Asian", "Middle Eastern", "European", "Other"] as PatientEncounter["nationalityGroup"][])[Math.floor(rand() * 5)];
+      : (["South Asian","South-East Asian","Middle Eastern","European","Other"] as PatientEncounter["nationalityGroup"][])[Math.floor(rand() * 5)];
     const identifierKind = makeIdentifierKind(origin, rand);
-    const patientKey = `${origin === "local" ? "LOC" : "FOR"}-${(p + 1).toString().padStart(4, "0")}`;
-    const episodeCount = 51 + Math.floor(rand() * 9);
-    let latestDiseaseCode: DiseaseCode = "ili";
-    let latestFacilityId = "igmh";
+    const patientKey = `${origin === "local" ? "LOC" : "FOR"}-${(100 + i).toString().padStart(4,"0")}`;
 
-    for (let episode = 0; episode < episodeCount; episode++) {
-      const facilityBias = origin === "foreign" && rand() < 0.62
-        ? FACILITIES.filter((item) => item.id === "hulhumale" || item.id === "hulhumale_gp2" || item.id === "adk")
-        : FACILITIES;
-      const facilityPick = facilityBias[Math.floor(rand() * facilityBias.length)];
-      const diseaseCode = origin === "foreign" && rand() < 0.42 ? "dengue" : weightedDiseasePool[Math.floor(rand() * weightedDiseasePool.length)];
-      const disease = DISEASE_BY_CODE[diseaseCode];
-      const severityRoll = rand();
-      const severity: Severity = severityRoll < 0.58 ? "mild" : severityRoll < 0.84 ? "moderate" : severityRoll < 0.96 ? "severe" : "critical";
-      const outcomeRoll = rand();
-      const outcome: Outcome = outcomeRoll < 0.58 ? "recovered" : outcomeRoll < 0.9 ? "active" : outcomeRoll < 0.985 ? "referred" : "deceased";
-      const onset = new Date(2026, 3, 1 + Math.floor(rand() * 50));
-      const admit = new Date(onset.getTime() + Math.floor(rand() * 3) * 86400000);
-      const como: string[] = [];
-      const comoCount = Math.floor(rand() * 3);
-      for (let c = 0; c < comoCount; c++) {
-        const pick = COMORBIDITIES[Math.floor(rand() * (COMORBIDITIES.length - 1))];
-        if (!como.includes(pick)) como.push(pick);
-      }
-      if (como.length === 0) como.push("None");
-      latestDiseaseCode = diseaseCode;
-      latestFacilityId = facilityPick.id;
-      encounters.push({
-        id: `ENC-${(episodeCounter++).toString().padStart(6, "0")}`,
-        patientKey,
-        episodeId: `EP-${2026}-${(episode + 1).toString().padStart(4, "0")}`,
-        diseaseCode,
-        facilityId: facilityPick.id,
-        ageBracket,
-        gender,
-        origin,
-        nationalityGroup,
-        identifierKind,
-        atoll: facilityPick.atoll,
-        onsetDate: onset.toISOString().slice(0, 10),
-        admissionDate: admit.toISOString().slice(0, 10),
-        severity,
-        outcome,
-        comorbidities: como,
-        symptoms: SYMPTOMS[diseaseCode].slice(0, 2 + Math.floor(rand() * 2)),
-        prescriptionSignals: PRESCRIPTION_SIGNALS[diseaseCode].slice(0, 2 + Math.floor(rand() * 2)),
-        source: rand() < 0.58 ? "ehr" : rand() < 0.78 ? "facility_registry" : rand() < 0.94 ? "prescription_image" : "manual_review",
-        vaccinated: disease.vaccinePreventable ? rand() > 0.45 : undefined,
-        aiConfidence: +(0.76 + rand() * 0.23).toFixed(2),
-        lengthOfStayDays: Math.max(0, Math.floor(rand() * (severity === "critical" ? 13 : severity === "severe" ? 7 : 3))),
-        hospitalized: severity === "severe" || severity === "critical" || rand() > 0.68,
-      });
+    const facilityBias = origin === "foreign" && rand() < 0.60
+      ? FACILITIES.filter((f) => f.id === "hulhumale" || f.id === "hulhumale_gp2" || f.id === "adk")
+      : FACILITIES;
+    const facilityPick = facilityBias[Math.floor(rand() * facilityBias.length)];
+    const diseaseCode = origin === "foreign" && rand() < 0.48 ? "dengue" : weightedDiseasePool[Math.floor(rand() * weightedDiseasePool.length)];
+    const disease = DISEASE_BY_CODE[diseaseCode];
+
+    const severityRoll = rand();
+    const severity: Severity = severityRoll < 0.55 ? "mild" : severityRoll < 0.82 ? "moderate" : severityRoll < 0.97 ? "severe" : "critical";
+    const outcomeRoll = rand();
+    const outcome: Outcome = outcomeRoll < 0.55 ? "recovered" : outcomeRoll < 0.88 ? "active" : outcomeRoll < 0.985 ? "referred" : "deceased";
+
+    // date range: 2026-04-01 → 2026-05-21 (50 days)
+    const onset = new Date(2026, 3, 1 + Math.floor(rand() * 50));
+    const admit = new Date(onset.getTime() + Math.floor(rand() * 3) * 86400000);
+
+    const como: string[] = [];
+    const comoCount = Math.floor(rand() * 3);
+    for (let c = 0; c < comoCount; c++) {
+      const pick = COMORBIDITIES[Math.floor(rand() * (COMORBIDITIES.length - 1))];
+      if (!como.includes(pick)) como.push(pick);
     }
+    if (como.length === 0) como.push("None");
 
-    patients.push({ patientKey, origin, gender, ageBracket, nationalityGroup, identifierKind, episodeCount, latestDiseaseCode, latestFacilityId });
+    result.push({
+      id: `ENC-${idx.toString().padStart(6,"0")}`,
+      patientKey,
+      episodeId: `EP-2026-${(idx + 1).toString().padStart(4,"0")}`,
+      diseaseCode,
+      facilityId: facilityPick.id,
+      ageBracket,
+      gender,
+      origin,
+      nationalityGroup,
+      identifierKind,
+      atoll: facilityPick.atoll,
+      onsetDate: onset.toISOString().slice(0, 10),
+      admissionDate: admit.toISOString().slice(0, 10),
+      severity,
+      outcome,
+      comorbidities: como,
+      symptoms: SYMPTOMS[diseaseCode].slice(0, 2 + Math.floor(rand() * 2)),
+      prescriptionSignals: PRESCRIPTION_SIGNALS[diseaseCode].slice(0, 2 + Math.floor(rand() * 2)),
+      source: rand() < 0.58 ? "ehr" : rand() < 0.78 ? "facility_registry" : rand() < 0.94 ? "prescription_image" : "manual_review",
+      vaccinated: disease.vaccinePreventable ? rand() > 0.45 : undefined,
+      aiConfidence: +(0.76 + rand() * 0.23).toFixed(2),
+      lengthOfStayDays: Math.max(0, Math.floor(rand() * (severity === "critical" ? 13 : severity === "severe" ? 7 : 3))),
+      hospitalized: severity === "severe" || severity === "critical" || rand() > 0.68,
+    });
   }
-
-  return { patients, encounters };
+  return result;
 }
 
-const COHORT = buildPatientCohort();
-export const PATIENTS: PatientProfile[] = COHORT.patients;
-export const PATIENT_ENCOUNTERS: PatientEncounter[] = COHORT.encounters;
+export const PATIENT_ENCOUNTERS: PatientEncounter[] = [
+  ...PRE_SEEDED_ENCOUNTERS,
+  ...buildSeededEncounters(),
+];
+
+/** De-duplicated patient index derived from encounter data */
+export const PATIENTS: PatientProfile[] = (() => {
+  const map = new Map<string, PatientProfile>();
+  for (const enc of PATIENT_ENCOUNTERS) {
+    if (!map.has(enc.patientKey)) {
+      map.set(enc.patientKey, {
+        patientKey: enc.patientKey,
+        origin: enc.origin,
+        gender: enc.gender,
+        ageBracket: enc.ageBracket,
+        nationalityGroup: enc.nationalityGroup,
+        identifierKind: enc.identifierKind,
+        episodeCount: 0,
+        latestDiseaseCode: enc.diseaseCode,
+        latestFacilityId: enc.facilityId,
+      });
+    }
+    const p = map.get(enc.patientKey)!;
+    p.episodeCount += 1;
+    p.latestDiseaseCode = enc.diseaseCode;
+    p.latestFacilityId = enc.facilityId;
+  }
+  return Array.from(map.values());
+})();
 
 export function encountersFor(disease: DiseaseCode | "all"): PatientEncounter[] {
-  return disease === "all" ? PATIENT_ENCOUNTERS : PATIENT_ENCOUNTERS.filter((encounter) => encounter.diseaseCode === disease);
+  return disease === "all" ? PATIENT_ENCOUNTERS : PATIENT_ENCOUNTERS.filter((enc) => enc.diseaseCode === disease);
 }
 
 export function foreignEncounters(): PatientEncounter[] {
-  return PATIENT_ENCOUNTERS.filter((encounter) => encounter.origin === "foreign");
+  return PATIENT_ENCOUNTERS.filter((enc) => enc.origin === "foreign");
 }
 
 export function originSummary(disease: DiseaseCode | "all" = "all") {
   const rows = encountersFor(disease);
   return [
-    { group: "Local female", origin: "local", gender: "F", count: rows.filter((item) => item.origin === "local" && item.gender === "F").length, icon: "LF" },
-    { group: "Local male", origin: "local", gender: "M", count: rows.filter((item) => item.origin === "local" && item.gender === "M").length, icon: "LM" },
-    { group: "Foreign female", origin: "foreign", gender: "F", count: rows.filter((item) => item.origin === "foreign" && item.gender === "F").length, icon: "FF" },
-    { group: "Foreign male", origin: "foreign", gender: "M", count: rows.filter((item) => item.origin === "foreign" && item.gender === "M").length, icon: "FM" },
+    { group: "Local female",   origin: "local",   gender: "F", count: rows.filter((e) => e.origin === "local"   && e.gender === "F").length, icon: "LF" },
+    { group: "Local male",     origin: "local",   gender: "M", count: rows.filter((e) => e.origin === "local"   && e.gender === "M").length, icon: "LM" },
+    { group: "Foreign female", origin: "foreign", gender: "F", count: rows.filter((e) => e.origin === "foreign" && e.gender === "F").length, icon: "FF" },
+    { group: "Foreign male",   origin: "foreign", gender: "M", count: rows.filter((e) => e.origin === "foreign" && e.gender === "M").length, icon: "FM" },
   ];
 }
 
@@ -397,10 +483,10 @@ export interface ImportedPatientRow {
 }
 
 export const IMPORTED_FOREIGN_ROWS: ImportedPatientRow[] = [
-  { row: 2, source: "Clinic registry", displayName: "Foreign patient 01", age: 31, gender: "M", identifierSample: "PA-793184", identifierKind: "passport", origin: "foreign", diagnosisText: "Fever, rash, retro-orbital pain - probable dengue", diseaseCode: "dengue", prescriptionText: "CBC repeat, paracetamol, avoid NSAIDs", facilityId: "hulhumale", aiConfidence: 0.94, action: "auto-classified" },
-  { row: 3, source: "Facility portal", displayName: "Foreign patient 02", age: 27, gender: "F", identifierSample: "MA7782991", identifierKind: "passport", origin: "foreign", diagnosisText: "High fever with platelet drop", diseaseCode: "dengue", prescriptionText: "CBC tomorrow, oral fluids", facilityId: "hulhumale_gp2", aiConfidence: 0.91, action: "auto-classified" },
-  { row: 4, source: "Prescription image", displayName: "Foreign patient 03", age: 42, gender: "M", identifierSample: "HUL-OPD-55182", identifierKind: "hospital_number", origin: "foreign", diagnosisText: "Fever/cough, possible ILI", diseaseCode: "ili", prescriptionText: "Paracetamol, oseltamivir if risk factor", facilityId: "adk", aiConfidence: 0.83, action: "manual-review" },
-  { row: 5, source: "Clinic registry", displayName: "Foreign patient 04", age: 19, gender: "F", identifierSample: "A00000000", identifierKind: "unknown_foreign", origin: "foreign", diagnosisText: "Vomiting and watery stool", diseaseCode: "gastro", prescriptionText: "ORS, zinc", facilityId: "hulhumale_gp2", aiConfidence: 0.89, action: "auto-classified" },
+  { row: 2, source: "Clinic registry",    displayName: "Foreign patient 01", age: 31, gender: "M", identifierSample: "PA-793184",    identifierKind: "passport",        origin: "foreign", diagnosisText: "Fever, rash, retro-orbital pain - probable dengue", diseaseCode: "dengue", prescriptionText: "CBC repeat, paracetamol, avoid NSAIDs",         facilityId: "hulhumale",    aiConfidence: 0.94, action: "auto-classified" },
+  { row: 3, source: "Facility portal",    displayName: "Foreign patient 02", age: 27, gender: "F", identifierSample: "MA7782991",    identifierKind: "passport",        origin: "foreign", diagnosisText: "High fever with platelet drop",                    diseaseCode: "dengue", prescriptionText: "CBC tomorrow, oral fluids",                     facilityId: "hulhumale_gp2",aiConfidence: 0.91, action: "auto-classified" },
+  { row: 4, source: "Prescription image", displayName: "Foreign patient 03", age: 42, gender: "M", identifierSample: "HUL-OPD-55182",identifierKind: "hospital_number", origin: "foreign", diagnosisText: "Fever/cough, possible ILI",                        diseaseCode: "ili",    prescriptionText: "Paracetamol, oseltamivir if risk factor",       facilityId: "adk",          aiConfidence: 0.83, action: "manual-review" },
+  { row: 5, source: "Clinic registry",    displayName: "Foreign patient 04", age: 19, gender: "F", identifierSample: "A00000000",    identifierKind: "unknown_foreign", origin: "foreign", diagnosisText: "Vomiting and watery stool",                        diseaseCode: "gastro", prescriptionText: "ORS, zinc",                                    facilityId: "hulhumale_gp2",aiConfidence: 0.89, action: "auto-classified" },
 ];
 
 export const ATOLL_POPULATIONS: Record<string, number> = {
@@ -423,7 +509,7 @@ export interface WeeklyPoint {
 
 export function weeklySeriesFor(disease: DiseaseCode): WeeklyPoint[] {
   const rand = mulberry32(disease.charCodeAt(0) * 73 + disease.length);
-  const weeks = ["W14", "W15", "W16", "W17", "W18", "W19", "W20"];
+  const weeks = ["W14","W15","W16","W17","W18","W19","W20"];
   let base = 18 + Math.floor(rand() * 46);
   const result: WeeklyPoint[] = [];
   let prev = base;
@@ -436,8 +522,9 @@ export function weeklySeriesFor(disease: DiseaseCode): WeeklyPoint[] {
     const positivity = Math.min(45, (base / tests) * 100 + rand() * 5);
     const rt = 0.72 + growth + (rand() - 0.5) * 0.2;
     result.push({
-      week: weeks[i], cases: base, newCases: i === 0 ? base : Math.max(0, base - prev), hospitalizations: hospitalized,
-      recoveries: Math.round(base * (0.56 + rand() * 0.24)), deaths, testsRun: tests, positivity: +positivity.toFixed(1),
+      week: weeks[i], cases: base, newCases: i === 0 ? base : Math.max(0, base - prev),
+      hospitalizations: hospitalized, recoveries: Math.round(base * (0.56 + rand() * 0.24)),
+      deaths, testsRun: tests, positivity: +positivity.toFixed(1),
       rt: +rt.toFixed(2), doublingDays: +(rt > 1 ? 4 + rand() * 6 : 18 + rand() * 12).toFixed(1),
     });
     prev = base;
@@ -461,14 +548,14 @@ export interface DashboardSummary {
 }
 
 export function fetchDashboardSummary(): DashboardSummary {
-  const totalActive = PATIENT_ENCOUNTERS.filter((encounter) => encounter.outcome === "active").length;
-  const recovered = PATIENT_ENCOUNTERS.filter((encounter) => encounter.outcome === "recovered").length;
+  const totalActive  = PATIENT_ENCOUNTERS.filter((e) => e.outcome === "active").length;
+  const recovered    = PATIENT_ENCOUNTERS.filter((e) => e.outcome === "recovered").length;
   return {
     totalActiveCases: totalActive,
-    newCasesLast24h: FACILITIES.reduce((sum, item) => sum + item.conditions.reduce((inner, conditionItem) => inner + conditionItem.last24h, 0), 0),
+    newCasesLast24h: FACILITIES.reduce((sum, f) => sum + f.conditions.reduce((inner, c) => inner + c.last24h, 0), 0),
     totalFacilities: FACILITIES.length,
-    criticalFacilities: FACILITIES.filter((facilityItem) => facilityItem.status === "critical").length,
-    totalDeaths: PATIENT_ENCOUNTERS.filter((encounter) => encounter.outcome === "deceased").length,
+    criticalFacilities: FACILITIES.filter((f) => f.status === "critical").length,
+    totalDeaths: PATIENT_ENCOUNTERS.filter((e) => e.outcome === "deceased").length,
     recoveryRate: +((recovered / PATIENT_ENCOUNTERS.length) * 100).toFixed(1),
     testingRate: 1240,
     activeOutbreaks: OUTBREAK_CLUSTERS.length,
@@ -499,7 +586,7 @@ export function generateIncident(): IncidentEvent {
   const date = new Date();
   return {
     id: crypto.randomUUID().slice(0, 8),
-    timestamp: `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}:${date.getSeconds().toString().padStart(2, "0")}`,
+    timestamp: `${date.getHours().toString().padStart(2,"0")}:${date.getMinutes().toString().padStart(2,"0")}:${date.getSeconds().toString().padStart(2,"0")}`,
     facilityId: facilityPick.id,
     facilityName: facilityPick.shortName,
     diseaseCode: conditionPick.code,
@@ -523,13 +610,13 @@ export function generateSystemLogs(): LogEntry[] {
   const now = new Date();
   const templates: { level: LogEntry["level"]; source: string; message: string; facility?: string }[] = [
     { level: "critical", source: "Disease Signal Engine", message: "Hulhumale dengue same-day count exceeded critical threshold: 23 cases", facility: "HMH" },
-    { level: "warning", source: "Foreign Audit", message: "Facility registry detected foreign-patient dengue growth around Hulhumale Phase 2", facility: "HGP2" },
-    { level: "info", source: "Prescription OCR", message: "Prescription image parsed: paracetamol + CBC repeat mapped to dengue rule set", facility: "HMH" },
-    { level: "info", source: "Lab System", message: "Batch diagnostic results processed: 45 samples completed", facility: "IGMH" },
-    { level: "info", source: "AI Engine", message: "6,000+ episodes classified across 126 de-identified patient histories" },
-    { level: "warning", source: "Dengue Watch", message: "New dengue cluster detected in Greater Male and Raa Atoll", facility: "URH" },
-    { level: "info", source: "Data Sync", message: "Facility registry, EHR, lab, and prescription image queues synchronized" },
-    { level: "warning", source: "HFMD Watch", message: "HFMD below alert threshold but rising in Hulhumale Phase 2", facility: "HGP2" },
+    { level: "warning",  source: "Foreign Audit",         message: "Facility registry detected foreign-patient dengue growth around Hulhumale Phase 2", facility: "HGP2" },
+    { level: "info",     source: "Prescription OCR",      message: "Prescription image parsed: paracetamol + CBC repeat mapped to dengue rule set", facility: "HMH" },
+    { level: "info",     source: "Lab System",             message: "Batch diagnostic results processed: 45 samples completed", facility: "IGMH" },
+    { level: "info",     source: "AI Engine",              message: `${PATIENT_ENCOUNTERS.length} episodes classified across ${PATIENTS.length} de-identified patient histories` },
+    { level: "warning",  source: "Dengue Watch",           message: "New dengue cluster detected in Greater Male and Raa Atoll", facility: "URH" },
+    { level: "info",     source: "Data Sync",              message: "Facility registry, EHR, lab, and prescription image queues synchronized" },
+    { level: "warning",  source: "HFMD Watch",             message: "HFMD below alert threshold but rising in Hulhumale Phase 2", facility: "HGP2" },
   ];
   return templates.map((template, index) => ({
     id: `log-${index}`,
@@ -563,26 +650,26 @@ export interface ReportDetail extends ReportMeta {
 }
 
 export const REPORTS: ReportMeta[] = [
-  { id: "RPT-001", title: "Weekly Epidemiological Summary - W20/2026", type: "Auto-generated", date: "2026-05-19", status: "Ready", author: "AI Surveillance Engine", pageCount: 118, diseaseCode: "all" },
-  { id: "RPT-002", title: "Hulhumale Foreign Worker Dengue Audit", type: "Foreign Patient Audit", date: "2026-05-18", status: "Ready", author: "Dr. A. Shafia + AI Review", pageCount: 104, diseaseCode: "dengue" },
-  { id: "RPT-003", title: "Greater Male Dengue Cluster - Facility Investigation", type: "Vector-Borne", date: "2026-05-17", status: "In Progress", author: "Dr. M. Naseer", pageCount: 96, diseaseCode: "dengue" },
-  { id: "RPT-004", title: "Hulhumale Phase 2 HFMD Signal Brief", type: "Cluster Brief", date: "2026-05-17", status: "Ready", author: "AI + Dr. F. Hassan", pageCount: 62, diseaseCode: "hfmd" },
-  { id: "RPT-005", title: "National Morbidity Episode Audit - April/May 2026", type: "M&M Statistical", date: "2026-05-01", status: "Ready", author: "Statistics Unit", pageCount: 143, diseaseCode: "all" },
-  { id: "RPT-006", title: "Influenza Vaccination Applicability and Coverage Q2/2026", type: "Immunization", date: "2026-04-30", status: "Ready", author: "Immunization Programme", pageCount: 88, diseaseCode: "influenza" },
+  { id: "RPT-001", title: "Weekly Epidemiological Summary - W20/2026", type: "Auto-generated",    date: "2026-05-19", status: "Ready",       author: "AI Surveillance Engine",   pageCount: 118, diseaseCode: "all" },
+  { id: "RPT-002", title: "Hulhumale Foreign Worker Dengue Audit",     type: "Foreign Patient Audit",date:"2026-05-18",status: "Ready",      author: "Dr. A. Shafia + AI Review", pageCount: 104, diseaseCode: "dengue" },
+  { id: "RPT-003", title: "Greater Male Dengue Cluster - Facility Investigation", type: "Vector-Borne", date: "2026-05-17", status: "In Progress", author: "Dr. M. Naseer",        pageCount: 96,  diseaseCode: "dengue" },
+  { id: "RPT-004", title: "Hulhumale Phase 2 HFMD Signal Brief",       type: "Cluster Brief",     date: "2026-05-17", status: "Ready",       author: "AI + Dr. F. Hassan",       pageCount: 62,  diseaseCode: "hfmd" },
+  { id: "RPT-005", title: "National Morbidity Episode Audit - Apr/May 2026", type: "M&M Statistical", date: "2026-05-01", status: "Ready",   author: "Statistics Unit",          pageCount: 143, diseaseCode: "all" },
+  { id: "RPT-006", title: "Influenza Vaccination Applicability Q2/2026", type: "Immunization",    date: "2026-04-30", status: "Ready",       author: "Immunization Programme",   pageCount: 88,  diseaseCode: "influenza" },
 ];
 
 export function reportDetail(id: string): ReportDetail | null {
-  const meta = REPORTS.find((report) => report.id === id);
+  const meta = REPORTS.find((r) => r.id === id);
   if (!meta) return null;
-  const facilityNames = FACILITIES.map((facilityItem) => facilityItem.name).join(", ");
+  const facilityNames = FACILITIES.map((f) => f.name).join(", ");
   const sections: ReportSection[] = [
     { heading: "1. Facilities Reviewed", body: `The analysis reviewed de-identified episodes from ${facilityNames}. No patient names, addresses, passport numbers, national identifiers, or hospital numbers are included in this report.` },
     { heading: "2. Case Definition and Source Data", body: "Cases were classified from EHR entries, facility registry feeds, clinician manual entries, laboratory feeds, and prescription images. AI rules used diagnosis text, symptom phrases, prescribed medicines, age, sex, facility, and encounter timing to classify disease category and severity." },
-    { heading: "3. Disease-Signal Thresholds", body: "Facility markers are disease-signal based only. One to two same-day cases remain stable, three to ten cases are watch-level, more than ten same-day cases are moderate, and more than twenty same-day cases are critical. The thresholds are not based on beds, ICU, or ventilators." },
+    { heading: "3. Disease-Signal Thresholds", body: "Facility markers are disease-signal based only. One to two same-day cases remain stable, three to ten cases are watch-level, more than ten same-day cases are moderate, and more than twenty same-day cases are critical." },
     { heading: "4. Foreign Patient Audit", body: "Foreign-patient episodes were separated from local-patient episodes using identifier pattern, facility hospital number, passport-like values, and missing local-ID structure. Hulhumale Hospital and Hulhumale GP Clinic Phase 2 showed the strongest dengue signal among foreign-patient records." },
     { heading: "5. Clinical Symptom Patterns", body: "Dengue-classified records commonly showed high fever, retro-orbital pain, rash, platelet drop, and prescriptions indicating CBC repeat plus avoidance of NSAIDs. Respiratory classifications were supported by cough, sore throat, myalgia, positive rapid tests, and oseltamivir references where appropriate." },
     { heading: "6. Epidemiological Findings", body: "A same-day dengue increase above the critical threshold was observed around Hulhumale and Phase 2. ILI remains elevated in Greater Male but below critical threshold in most facilities. HFMD is currently a watch signal and should not be presented as a national outbreak." },
-    { heading: "7. AI Classification Audit", body: "The system classified more than 6,000 de-identified episodes from over 100 patient histories, each with more than 50 recorded episodes for pitch-scale demonstration. Encounters below 0.75 confidence are routed to manual review rather than counted as confirmed signals." },
+    { heading: "7. AI Classification Audit", body: `The system classified ${PATIENT_ENCOUNTERS.length} de-identified episodes from ${PATIENTS.length} patient histories. Encounters below 0.75 confidence are routed to manual review rather than counted as confirmed signals.` },
     { heading: "8. Privacy Controls", body: "Reports intentionally exclude patient names and addresses. Research excerpts may include non-identifying symptom patterns, age bands, gender, local/foreign group, facility, disease class, and anonymized prescription indicators." },
   ];
   return {
@@ -597,7 +684,7 @@ export function reportDetail(id: string): ReportDetail | null {
       "Keep vaccination charts visible only for vaccine-preventable diseases.",
       "Review all critical disease signals with an epidemiologist before public reporting.",
     ],
-    methodology: "Synthetic pitch dataset generated from de-identified patient histories. Statistical summaries use disease-specific counts, daily thresholds, local/foreign grouping, gender grouping, age-band distribution, and source-channel audit flags. AI classification confidence is simulated for demonstration and must be replaced with audited model output in production.",
+    methodology: "Dataset uses 50 pre-seeded baseline encounters plus 980 deterministically generated encounters (mulberry32 PRNG, seed: 20260521). Statistical summaries use disease-specific counts, daily thresholds, local/foreign grouping, gender grouping, age-band distribution, and source-channel audit flags.",
     citations: [
       "WHO. Public health surveillance for epidemic-prone infectious diseases.",
       "Maldives Ministry of Health. National Public Health Surveillance Guidelines.",

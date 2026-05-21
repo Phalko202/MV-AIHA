@@ -24,6 +24,7 @@ import {
   type DiseaseCode,
   type PatientEncounter,
 } from "@/lib/surveillance-api";
+import { ICD_DISEASE_LIBRARY, searchIcdLibrary, TRACKED_CODES } from "@/lib/icd-library";
 import {
   DEFAULT_ANALYTICS_FILTERS,
   analyticsDateBounds,
@@ -138,14 +139,14 @@ export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersCh
   useEffect(() => { requestAnimationFrame(() => setReady(true)); }, []);
 
   const chartDef = CHARTS.find((c) => c.id === active)!;
-  const selectedDiseaseCode = filters.diagnosis === "all" ? null : filters.diagnosis;
-  const selectedDiseaseName = filters.diagnosis === "all" ? "All diseases" : DISEASE_BY_CODE[filters.diagnosis].name;
-  const filteredCount = useMemo(() => filterAnalyticsEncounters(encountersFor(filters.diagnosis), filters).length, [filters]);
+  const selectedDiseaseCode = filters.diagnosis === "all" ? null : filters.diagnosis as DiseaseCode;
+  const selectedDiseaseName = filters.diagnosis === "all" ? "All diseases" : (DISEASE_BY_CODE[filters.diagnosis as DiseaseCode]?.name ?? filters.diagnosis);
+  const filteredCount = useMemo(() => filterAnalyticsEncounters(encountersFor(filters.diagnosis as DiseaseCode | "all"), filters).length, [filters]);
   const notApplicableReason =
     chartDef.requiresDisease && filters.diagnosis === "all"
       ? "Select a specific disease above to view this chart."
       : chartDef.notApplicableReason && filters.diagnosis !== "all"
-        ? chartDef.notApplicableReason(filters.diagnosis)
+        ? chartDef.notApplicableReason(filters.diagnosis as DiseaseCode)
         : null;
 
   return (
@@ -234,12 +235,11 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
   }, [open]);
 
   const activeCount = countAnalyticsFilters(filters);
-  const selected = filters.diagnosis === "all" ? null : DISEASE_BY_CODE[filters.diagnosis];
-  const visibleDiseases = DISEASES.filter((item) => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return true;
-    return `${item.name} ${item.icd10} ${item.category}`.toLowerCase().includes(normalized);
-  });
+  // selected display: search ICD library first, then tracked diseases, then null
+  const selectedIcd = filters.diagnosis === "all" ? null : ICD_DISEASE_LIBRARY.find(d => d.code === filters.diagnosis);
+  const selectedTracked = filters.diagnosis !== "all" ? DISEASE_BY_CODE[filters.diagnosis as DiseaseCode] : null;
+  const selectedDisplay = selectedIcd ?? (selectedTracked ? { name: selectedTracked.name, icd10: selectedTracked.icd10, tracked: true } : null);
+  const visibleDiseases = searchIcdLibrary(query).slice(0, 200); // cap at 200 for render perf
 
   const toggleList = <T extends string,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
   const dateSummary = formatDateSummary(filters.date);
@@ -253,7 +253,7 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[9px] font-black uppercase tracking-wider text-blue-600">Diagnosis & filters</span>
-          <span className="block truncate text-xs font-black text-slate-800">{selected?.name ?? "All diseases"}</span>
+          <span className="block truncate text-xs font-black text-slate-800">{selectedDisplay?.name ?? "All diseases"}</span>
           <span className="block truncate text-[10px] font-semibold text-slate-400">{dateSummary}{activeCount > 1 ? ` · ${activeCount - 1} more filters` : ""}</span>
         </span>
         {activeCount > 0 && <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">{activeCount}</span>}
@@ -261,47 +261,63 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-6xl max-h-[88vh] overflow-hidden rounded-[32px] border border-white/80 bg-white/96 shadow-[0_40px_120px_rgba(15,23,42,0.26)]" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/60 to-cyan-50/50 px-6 py-5">
+        <div className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/50 backdrop-blur-sm pt-12 pb-4 px-4 overflow-y-auto" onClick={() => setOpen(false)}>
+          <div className="relative w-full max-w-6xl flex flex-col rounded-[32px] border border-white/80 bg-white shadow-[0_40px_120px_rgba(15,23,42,0.28)]" onClick={(event) => event.stopPropagation()}>
+            {/* sticky header */}
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/60 to-cyan-50/50 px-6 py-5 rounded-t-[32px]">
               <div>
                 <div className="mb-1 flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-blue-600"><SlidersHorizontal className="h-3.5 w-3.5" /> Analytics filter popup</div>
-                <h3 className="text-2xl font-black tracking-tight text-slate-950">Diagnosis, date, and cohort controls</h3>
-                <p className="text-xs text-slate-500">One popup surface for analytics. No side drawer, no leaking header filter button.</p>
+                <h3 className="text-xl font-black tracking-tight text-slate-950">Diagnosis, date, and cohort controls</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Pick disease focus, date window, and cohort filters — then hit Apply.</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button onClick={() => setDraft(DEFAULT_ANALYTICS_FILTERS)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer">Reset</button>
                 <button onClick={() => { onChange(draft); setOpen(false); }} className="rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2 text-xs font-black text-white shadow-[0_14px_28px_rgba(37,99,235,0.24)] cursor-pointer">Apply</button>
                 <button onClick={() => setOpen(false)} className="rounded-2xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"><X className="h-5 w-5" /></button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] max-h-[calc(88vh-92px)] overflow-hidden">
-              <div className="border-r border-slate-100 bg-slate-50/70 p-5 overflow-y-auto">
-                <SectionTitle icon={Search} title="Diagnosis library" detail="Choose one disease focus or leave the full stack visible." />
-                <label className="mt-3 flex items-center gap-2 rounded-2xl border border-white/80 bg-white px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                  <Search className="h-4 w-4 text-slate-400" />
+            {/* two-column body — both columns scroll independently */}
+            <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr]">
+              {/* left: disease picker */}
+              <div className="border-r border-slate-100 bg-slate-50/70 p-5">
+                <SectionTitle icon={Search} title="Diagnosis library" detail="Search and pick a disease focus, or leave the stack on All." />
+                <label className="mt-3 flex items-center gap-2 rounded-2xl border border-white bg-white px-3 py-2.5 shadow-sm">
+                  <Search className="h-4 w-4 text-slate-400 shrink-0" />
                   <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ICD-10, category, disease..." className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400" />
                 </label>
-                <div className="mt-3 grid gap-2">
-                  <button onClick={() => setDraft({ ...draft, diagnosis: "all" })} className={`analytics-choice ${draft.diagnosis === "all" ? "is-selected" : ""}`}>
-                    <span><strong>All diseases</strong><small>National stack across all tracked disease groups</small></span>{draft.diagnosis === "all" && <Check className="h-4 w-4" />}
+                <div className="mt-3 space-y-1 max-h-[360px] overflow-y-auto pr-1">
+                  <button onClick={() => setDraft({ ...draft, diagnosis: "all" })} className={`analytics-choice w-full ${draft.diagnosis === "all" ? "is-selected" : ""}`}>
+                    <span><strong>All diseases</strong><small>National stack — all tracked groups</small></span>{draft.diagnosis === "all" && <Check className="h-4 w-4 shrink-0" />}
                   </button>
                   {visibleDiseases.map((item) => (
-                    <button key={item.code} onClick={() => setDraft({ ...draft, diagnosis: item.code })} className={`analytics-choice ${draft.diagnosis === item.code ? "is-selected" : ""}`}>
-                      <span><strong>{item.name}</strong><small>{item.icd10} · {item.category}</small></span>{draft.diagnosis === item.code && <Check className="h-4 w-4" />}
+                    <button key={item.code} onClick={() => setDraft({ ...draft, diagnosis: item.code })} className={`analytics-choice w-full text-left ${draft.diagnosis === item.code ? "is-selected" : ""}`}>
+                      <span className="min-w-0 flex-1">
+                        <strong className="block text-xs leading-tight">{item.name}</strong>
+                        <small className="flex items-center gap-1.5 mt-0.5">
+                          <span className="font-mono">{item.icd10}</span>
+                          <span>·</span>
+                          <span>{item.category}</span>
+                          {item.tracked && <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700">Tracked</span>}
+                        </small>
+                      </span>
+                      {draft.diagnosis === item.code && <Check className="h-4 w-4 shrink-0" />}
                     </button>
                   ))}
+                  {visibleDiseases.length === 0 && (
+                    <p className="py-4 text-center text-xs text-slate-400">No diseases match your search.</p>
+                  )}
                 </div>
               </div>
 
-              <div className="p-5 overflow-y-auto">
+              {/* right: all other filters */}
+              <div className="p-5">
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-                    <SectionTitle icon={CalendarDays} title="Signal window" detail="Choose a recent window or enter a custom date range." />
+                  <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                    <SectionTitle icon={CalendarDays} title="Signal window" detail="Choose a preset or enter a custom range." />
                     <div className="mt-3 flex flex-wrap gap-2">
                       {DATE_PRESETS.map((preset) => (
-                        <button key={preset.value} onClick={() => setDraft({ ...draft, date: { preset: preset.value, start: "", end: "" } })} className={`rounded-full px-3 py-1.5 text-[11px] font-black transition-all cursor-pointer ${draft.date.preset === preset.value ? "bg-blue-600 text-white shadow-[0_8px_16px_rgba(37,99,235,0.22)]" : "bg-slate-100 text-slate-600 hover:text-slate-950"}`}>{preset.label}</button>
+                        <button key={preset.value} onClick={() => setDraft({ ...draft, date: { preset: preset.value, start: "", end: "" } })} className={`rounded-full px-3 py-1.5 text-[11px] font-black transition-all cursor-pointer ${draft.date.preset === preset.value ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:text-slate-950"}`}>{preset.label}</button>
                       ))}
                       <button onClick={() => setDraft({ ...draft, date: { ...draft.date, preset: "custom" } })} className={`rounded-full px-3 py-1.5 text-[11px] font-black transition-all cursor-pointer ${draft.date.preset === "custom" ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600 hover:text-slate-950"}`}>Custom</button>
                     </div>
@@ -313,8 +329,8 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
                     )}
                   </div>
 
-                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-                    <SectionTitle icon={ShieldCheck} title="Severity" detail="Multi-select acuity tiers for the analytics cohort." />
+                  <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                    <SectionTitle icon={ShieldCheck} title="Severity" detail="Multi-select acuity tiers." />
                     <div className="mt-3 flex flex-wrap gap-2">
                       {(["mild", "moderate", "severe", "critical"] as PatientEncounter["severity"][]).map((option) => (
                         <FilterToken key={option} active={draft.severity.includes(option)} onClick={() => setDraft({ ...draft, severity: toggleList(draft.severity, option) })}>{option}</FilterToken>
@@ -322,8 +338,8 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-                    <SectionTitle icon={UserRound} title="Origin and gender" detail="Keep the cohort split tidy without fragmenting the layout." />
+                  <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                    <SectionTitle icon={UserRound} title="Origin and gender" detail="Cohort split filters." />
                     <div className="mt-3 space-y-3">
                       <div>
                         <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-slate-400">Origin</p>
@@ -344,8 +360,8 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-                    <SectionTitle icon={Activity} title="Outcome" detail="Optional post-care state filters for recovery and escalation views." />
+                  <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                    <SectionTitle icon={Activity} title="Outcome" detail="Post-care state filters." />
                     <div className="mt-3 flex flex-wrap gap-2">
                       {(["active", "recovered", "referred", "deceased"] as PatientEncounter["outcome"][]).map((option) => (
                         <FilterToken key={option} active={draft.outcomes.includes(option)} onClick={() => setDraft({ ...draft, outcomes: toggleList(draft.outcomes, option) })}>{option}</FilterToken>
@@ -353,31 +369,36 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-                    <SectionTitle icon={MapPin} title="Atoll" detail="Apply region filters without dropping into a side drawer." />
-                    <div className="mt-3 grid grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                  <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                    <SectionTitle icon={MapPin} title="Atoll" detail="Filter by administrative region." />
+                    <div className="mt-3 grid grid-cols-2 gap-2">
                       {Object.entries(ATOLL_POPULATIONS).map(([atollName, population]) => (
-                        <button key={atollName} onClick={() => setDraft({ ...draft, atolls: toggleList(draft.atolls, atollName) })} className={`rounded-2xl border px-3 py-2 text-left transition-all cursor-pointer ${draft.atolls.includes(atollName) ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600 hover:text-slate-950"}`}>
-                          <span className="block text-sm font-black">{atollName}</span>
-                          <span className="block text-[10px] font-semibold opacity-70">{population.toLocaleString()} pop.</span>
+                        <button key={atollName} onClick={() => setDraft({ ...draft, atolls: toggleList(draft.atolls, atollName) })} className={`rounded-xl border px-3 py-2 text-left transition-all cursor-pointer ${draft.atolls.includes(atollName) ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600 hover:text-slate-950"}`}>
+                          <span className="block text-xs font-black">{atollName}</span>
+                          <span className="block text-[10px] font-semibold opacity-60">{population.toLocaleString()} pop.</span>
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-                    <SectionTitle icon={Activity} title="Facility" detail="Target one or more hospitals or centres." />
-                    <div className="mt-3 grid gap-2 max-h-60 overflow-y-auto pr-1">
+                  <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                    <SectionTitle icon={Activity} title="Facility" detail="Filter to one or more hospitals." />
+                    <div className="mt-3 space-y-1.5">
                       {FACILITIES.map((facility) => (
-                        <button key={facility.id} onClick={() => setDraft({ ...draft, facilities: toggleList(draft.facilities, facility.id) })} className={`rounded-2xl border px-3 py-2 text-left transition-all cursor-pointer ${draft.facilities.includes(facility.id) ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600 hover:text-slate-950"}`}>
-                          <span className="block text-sm font-black">{facility.shortName}</span>
-                          <span className="block text-[10px] font-semibold opacity-70">{facility.atoll} · {facility.type}</span>
+                        <button key={facility.id} onClick={() => setDraft({ ...draft, facilities: toggleList(draft.facilities, facility.id) })} className={`w-full rounded-xl border px-3 py-2 text-left transition-all cursor-pointer ${draft.facilities.includes(facility.id) ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600 hover:text-slate-950"}`}>
+                          <span className="block text-xs font-black">{facility.shortName}</span>
+                          <span className="block text-[10px] font-semibold opacity-60">{facility.atoll} · {facility.type}</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
+            {/* sticky apply footer for mobile */}
+            <div className="border-t border-slate-100 bg-white/80 px-6 py-3 flex justify-end gap-2 rounded-b-[32px] lg:hidden">
+              <button onClick={() => setDraft(DEFAULT_ANALYTICS_FILTERS)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 cursor-pointer">Reset</button>
+              <button onClick={() => { onChange(draft); setOpen(false); }} className="rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 px-5 py-2 text-xs font-black text-white cursor-pointer">Apply</button>
             </div>
           </div>
         </div>
@@ -437,7 +458,7 @@ function dateRangeDays(filter: AnalyticsDateFilter) {
 function buildDailyDiseaseRows(filters: AnalyticsFilterState) {
   const days = dateRangeDays(filters.date);
   if (days.length === 0) return [];
-  const scope = filters.diagnosis === "all" ? encountersFor("all") : encountersFor(filters.diagnosis);
+  const scope = filters.diagnosis === "all" ? encountersFor("all") : encountersFor(filters.diagnosis as DiseaseCode);
   const encounters = filterAnalyticsEncounters(scope, filters);
   return days.map((date) => {
     const row: { date: string; day: string } & Record<string, number | string> = { date, day: date.slice(5) };
@@ -470,7 +491,7 @@ function ChartRenderer({
   filters: AnalyticsFilterState;
   onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void;
 }) {
-  const disease = filters.diagnosis;
+  const disease = filters.diagnosis as DiseaseCode | "all";
   const dateFilter = filters.date;
   const encounters = useMemo(() => filterAnalyticsEncounters(encountersFor(disease), filters), [disease, filters]);
 

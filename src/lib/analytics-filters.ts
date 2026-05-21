@@ -13,7 +13,7 @@ export interface AnalyticsDateFilter {
 }
 
 export interface AnalyticsFilterState {
-  diagnosis: DiseaseCode | "all";
+  diagnosis: DiseaseCode | "all" | (string & Record<never, never>);
   date: AnalyticsDateFilter;
   severity: PatientEncounter["severity"][];
   origin: PatientEncounter["origin"][];
