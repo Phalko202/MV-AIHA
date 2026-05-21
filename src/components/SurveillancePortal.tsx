@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Activity, AlertTriangle, BarChart3, Bot, BrainCircuit, Building2, Check, ChevronDown, ChevronRight, ClipboardCheck, ClipboardList,
@@ -15,7 +15,7 @@ import { motion } from "framer-motion";
 import {
   DISEASES, DISEASE_BY_CODE, FACILITIES, IMPORTED_FOREIGN_ROWS, OUTBREAK_CLUSTERS,
   PATIENTS, REPORTS, encountersFor, fetchDashboardSummary, foreignEncounters,
-  generateIncident, generateSystemLogs, originSummary,
+  generateIncident, originSummary,
   type DashboardSummary, type DiseaseCode, type FacilityStatus, type IncidentEvent,
   type LogEntry, type PatientEncounter, type ReportMeta,
 } from "@/lib/surveillance-api";
@@ -33,7 +33,7 @@ const EncounterLog = dynamic(() => import("@/components/surveillance/EncounterLo
 const ReportViewer = dynamic(() => import("@/components/surveillance/ReportViewer"), { ssr: false });
 
 type SidebarView = "dashboard" | "map" | "analytics" | "outbreaks" | "patients" | "foreignAudit" | "fetching" | "logging" | "reports";
-type IntakeScope = "24h" | "seeded" | "critical" | "foreign";
+type IntakeScope = "all" | "ready" | "pending";
 
 interface NavItem { id: SidebarView; label: string; icon: React.ComponentType<{ className?: string }>; iconUrl: string }
 
@@ -42,7 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "map", label: "Maldives Disease Map", icon: Map, iconUrl: "/icons/people/earth.png" },
   { id: "analytics", label: "Interactive Analytics", icon: BarChart3, iconUrl: "/icons/people/chart.png" },
   { id: "outbreaks", label: "Disease Signals", icon: AlertTriangle, iconUrl: "/icons/3d/target.png" },
-  { id: "patients", label: "Patient Statistics", icon: Users, iconUrl: "/icons/3d/boy.png" },
+  { id: "patients", label: "Disease Statistics", icon: Users, iconUrl: "/icons/3d/virus.svg" },
   { id: "foreignAudit", label: "All Patient Statistics", icon: FileCheck, iconUrl: "/icons/3d/file-text.png" },
   { id: "fetching", label: "Live Processing", icon: Database, iconUrl: "/icons/3d/wifi.png" },
   { id: "logging", label: "System Logs", icon: ScrollText, iconUrl: "/icons/3d/notebook.png" },
@@ -118,10 +118,17 @@ export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: bo
   const [selectedReport, setSelectedReport] = useState<ReportMeta | null>(null);
   const [analyticsFilters, setAnalyticsFilters] = useState<AnalyticsFilterState>(DEFAULT_ANALYTICS_FILTERS);
 
+  const appendSystemLog = useCallback((entry: Omit<LogEntry, "id" | "timestamp">) => {
+    setLogs((previous) => [{
+      ...entry,
+      id: `live-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      timestamp: new Date().toISOString(),
+    }, ...previous].slice(0, 120));
+  }, []);
+
   useEffect(() => {
     setCurrentTime(formatMvtTime());
     setIncidents(Array.from({ length: 14 }, () => generateIncident()));
-    setLogs(generateSystemLogs());
 
     const id = setInterval(() => {
       setCurrentTime(formatMvtTime());
@@ -224,7 +231,19 @@ export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: bo
             <p className="text-xs text-slate-500">Ministry of Health - Maldives disease identification and surveillance</p>
           </div>
           <div className="hidden xl:flex items-center gap-2 animate-fadeIn">
-            {headerStats ? (
+            {view === "fetching" ? (
+              <>
+                <Chip label="Source" value="Vinavi API" color="text-blue-700" />
+                <Chip label="Mode" value="Live sync" color="text-emerald-600" />
+                <Chip label="Seeded" value="Hidden" color="text-slate-700" />
+              </>
+            ) : view === "logging" ? (
+              <>
+                <Chip label="Logs" value={logs.length.toLocaleString()} color="text-blue-700" />
+                <Chip label="Source" value="AI feed" color="text-emerald-600" />
+                <Chip label="Static" value="Removed" color="text-slate-700" />
+              </>
+            ) : headerStats ? (
               <>
                 <Chip label="Episodes" value={headerStats.episodes.toLocaleString()} color="text-blue-700" />
                 <Chip label="Active" value={headerStats.active.toLocaleString()} color="text-teal-600" />
@@ -254,7 +273,7 @@ export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: bo
           {view === "outbreaks" && <OutbreaksView onShowEncounters={showEncounters} />}
           {view === "patients" && <PatientSummaryView onShowEncounters={showEncounters} />}
           {view === "foreignAudit" && <PatientStatisticsView onShowEncounters={showEncounters} />}
-          {view === "fetching" && <LiveFetchingView onShowEncounters={showEncounters} />}
+          {view === "fetching" && <LiveFetchingView onLog={appendSystemLog} />}
           {view === "logging" && <LoggingView logs={logs} />}
           {view === "reports" && <ReportsView onOpen={setSelectedReport} analyticsFilters={analyticsFilters} aiPaused={aiPaused} />}
         </main>
@@ -672,7 +691,7 @@ function PatientDiseaseMenu({ value, onChange }: { value: DiseaseCode | "all"; o
   const [open, setOpen] = useState(false);
   const selected = value === "all" ? null : DISEASE_BY_CODE[value];
   return (
-    <div className="relative min-w-[280px]">
+    <div className={`relative min-w-[280px] ${open ? "z-[220]" : "z-10"}`}>
       <button onClick={() => setOpen((current) => !current)} className="modern-menu-button w-full cursor-pointer">
         <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Search className="h-5 w-5" /></span>
         <span className="min-w-0 flex-1 text-left">
@@ -682,7 +701,7 @@ function PatientDiseaseMenu({ value, onChange }: { value: DiseaseCode | "all"; o
         <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="modern-menu-popover left-0 top-[calc(100%+10px)] w-[420px]">
+        <div className="modern-menu-popover left-0 top-[calc(100%+10px)] z-[240] w-[420px]">
           <button onClick={() => { onChange("all"); setOpen(false); }} className={`modern-menu-choice ${value === "all" ? "is-selected" : ""}`}>
             <span><strong>All diseases</strong><small>National patient episode library</small></span>{value === "all" && <Check className="h-4 w-4" />}
           </button>
@@ -792,18 +811,40 @@ interface SeededQueueSummary {
   agents: { agent: string; count: number }[];
 }
 
-function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void }) {
-  const [running, setRunning] = useState(true);
+interface VinaviFeedEvent {
+  episodeId: string;
+  facilityId: string;
+  diagnosis: string | null;
+  icd10Code: string | null;
+  status: "ready" | "pending";
+  receivedAt: string;
+  pendingUntil: string | null;
+  sectionCount: number;
+  hasVitals: boolean;
+  origin: "local" | "foreign";
+}
+
+interface VinaviSyncSnapshot {
+  total: number;
+  ready: number;
+  pending: number;
+  readyEvents: VinaviFeedEvent[];
+  pendingEvents: VinaviFeedEvent[];
+  updatedAt: string;
+}
+
+function LiveFetchingView({ onLog }: { onLog: (entry: Omit<LogEntry, "id" | "timestamp">) => void }) {
+  const [syncPaused, setSyncPaused] = useState(false);
   const [step, setStep] = useState(0);
-  const [scope, setScope] = useState<IntakeScope>("24h");
-  const [manualNote, setManualNote] = useState("Add operator context here, for example: school cluster reported in Hulhumale, verify dengue trend before alert.");
-  const [seeded, setSeeded] = useState<SeededConsultationLite[]>([]);
-  const [seedSummary, setSeedSummary] = useState<SeededQueueSummary | null>(null);
+  const [scope, setScope] = useState<IntakeScope>("all");
+  const [manualNote, setManualNote] = useState("");
+  const [snapshot, setSnapshot] = useState<VinaviSyncSnapshot | null>(null);
+  const [feedEvents, setFeedEvents] = useState<VinaviFeedEvent[]>([]);
   const [queueError, setQueueError] = useState<string | null>(null);
-  const [seeding, setSeeding] = useState(false);
-  const [selectedSeed, setSelectedSeed] = useState<SeededConsultationLite | null>(null);
+  const [lastSync, setLastSync] = useState<string | null>(null);
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineResult, setPipelineResult] = useState<{ paused?: boolean; pipelineModels?: string[]; purgeSummary?: { recordCount: number; removedFieldCount: number; scrubbedTextSpans: number }; briefing?: { briefing: string; priorityLevel: string; recommendedActions: string[] }; error?: string } | null>(null);
+  const previousTotalRef = useRef<number | null>(null);
 
   const bots = useMemo(() => [
     { name: "Raw Ingestion Buffer", icon: FirstAidKit, task: "cleans incoming batches", model: "DeepSeek V4 Flash" },
@@ -812,75 +853,59 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
     { name: "MV-AIHA Router", icon: GitBranch, task: "releases only safe totals", model: "local guard" },
   ], []);
 
-  const visibleSeeded = seeded.filter((item) => {
-    if (scope === "critical") return item.priority === "urgent";
-    if (scope === "foreign") return item.sourcePortal === "Aasandha";
-    return true;
-  });
-  const queueSize = visibleSeeded.length;
-  const completed = Math.min(queueSize, step + visibleSeeded.filter((item) => item.status === "done").length);
+  const visibleEvents = feedEvents.filter((item) => scope === "all" ? true : item.status === scope);
+  const queueSize = visibleEvents.length;
+  const readyCount = snapshot?.ready ?? 0;
+  const pendingCount = snapshot?.pending ?? 0;
 
-  const loadSeededQueue = async () => {
+  const loadVinaviFeed = useCallback(async (manual = false) => {
     try {
-      const response = await fetch("/api/seed-consultations", { cache: "no-store" });
+      const response = await fetch("/api/vinavi/ingest", { cache: "no-store" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
-      setSeeded((payload.consultations ?? []) as SeededConsultationLite[]);
-      setSeedSummary((payload.summary ?? null) as SeededQueueSummary | null);
+      const payload = await response.json() as VinaviSyncSnapshot;
+      const readyEvents = payload.readyEvents ?? [];
+      const pendingEvents = payload.pendingEvents ?? [];
+      const allEvents = [...readyEvents, ...pendingEvents].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
+      setSnapshot({ ...payload, readyEvents, pendingEvents });
+      setFeedEvents(allEvents);
+      setLastSync(payload.updatedAt ?? new Date().toISOString());
       setQueueError(null);
+      if (manual) {
+        onLog({ level: "info", source: "Vinavi API Sync", message: `Manual sync completed: ${payload.ready} ready event(s), ${payload.pending} held blank episode(s).` });
+      }
+      if (previousTotalRef.current !== null && previousTotalRef.current !== payload.total) {
+        onLog({ level: "warning", source: "Vinavi API Sync", message: `Feed count changed from ${previousTotalRef.current} to ${payload.total}; AI review queue refreshed.` });
+      }
+      previousTotalRef.current = payload.total;
     } catch (error) {
-      setQueueError(error instanceof Error ? error.message : "Seed queue unavailable");
-      setSeeded([]);
+      const message = error instanceof Error ? error.message : "Vinavi API unavailable";
+      setQueueError(message);
+      onLog({ level: "error", source: "Vinavi API Sync", message: `Local Vinavi sync failed: ${message}` });
     }
-  };
+  }, [onLog]);
 
-  const seedConsultations = async (amount: number) => {
-    setSeeding(true);
-    setQueueError(null);
-    try {
-      const response = await fetch("/api/seed-consultations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      await loadSeededQueue();
-      setScope("seeded");
-    } catch (error) {
-      setQueueError(error instanceof Error ? error.message : "Could not seed consultations");
-    } finally {
-      setSeeding(false);
-    }
-  };
-
-  const clearQueue = async () => {
-    setQueueError(null);
-    try {
-      const response = await fetch("/api/seed-consultations", { method: "DELETE" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      setSeeded([]);
-      setSeedSummary(null);
-      setSelectedSeed(null);
-      setPipelineResult(null);
-    } catch (error) {
-      setQueueError(error instanceof Error ? error.message : "Could not clear queue");
-    }
+  const toggleSync = () => {
+    const nextPaused = !syncPaused;
+    setSyncPaused(nextPaused);
+    onLog({ level: nextPaused ? "warning" : "info", source: "Vinavi API Sync", message: nextPaused ? "Local Vinavi API syncing paused by operator." : "Local Vinavi API syncing resumed by operator." });
+    if (!nextPaused) void loadVinaviFeed(true);
   };
 
   const runPipeline = async () => {
     setPipelineRunning(true);
     setPipelineResult(null);
-    const logs = visibleSeeded.slice(0, 40).map((item) => ({
-      sourcePortal: item.sourcePortal ?? "Vinavi",
-      sourceAction: item.sourceAction ?? "episode-closed",
-      patientToken: item.patientId,
-      aasandhaToken: item.aasandhaNo,
+    const logs = visibleEvents.filter((item) => item.status === "ready").slice(0, 40).map((item) => ({
+      sourcePortal: "Vinavi",
+      sourceAction: "consultation-sync",
       episodeId: item.episodeId,
-      facility: item.facility,
-      diagnosis: item.diagnosis,
-      priority: item.priority,
-      stage: item.stage,
-      operatorContext: manualNote,
+      facility: item.facilityId,
+      diagnosis: item.diagnosis ?? "No diagnosis coded",
+      icd10Code: item.icd10Code,
+      status: item.status,
+      sectionCount: item.sectionCount,
+      hasVitals: item.hasVitals,
+      origin: item.origin,
+      operatorContext: manualNote || "No operator context supplied.",
     }));
     try {
       const response = await fetch("/api/ai/surveillance-feed", {
@@ -891,38 +916,40 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
       setPipelineResult(payload.analysis ?? payload);
+      onLog({ level: "critical", source: "AI Feed Detector", message: `Three-stage AI review completed for ${logs.length} Vinavi feed event(s).` });
     } catch (error) {
-      setPipelineResult({ error: error instanceof Error ? error.message : "Pipeline failed" });
+      const message = error instanceof Error ? error.message : "Pipeline failed";
+      setPipelineResult({ error: message });
+      onLog({ level: "error", source: "AI Feed Detector", message: `AI feed detection failed: ${message}` });
     } finally {
       setPipelineRunning(false);
     }
   };
 
   useEffect(() => {
-    loadSeededQueue();
-  }, []);
+    void loadVinaviFeed(false);
+  }, [loadVinaviFeed]);
 
   useEffect(() => {
-    if (!running) return undefined;
-    const id = setInterval(loadSeededQueue, 4500);
+    if (syncPaused) return undefined;
+    const id = setInterval(() => void loadVinaviFeed(false), 4500);
     return () => clearInterval(id);
-  }, [running]);
+  }, [syncPaused, loadVinaviFeed]);
 
   useEffect(() => {
-    if (!running) return undefined;
+    if (syncPaused) return undefined;
     const id = setInterval(() => setStep((current) => (current + 1) % 12), 1200);
     return () => clearInterval(id);
-  }, [running]);
+  }, [syncPaused]);
 
   return (
     <div className="space-y-4">
       <Panel className="p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3"><FlatCategoryIcon icon={Bot} tone="emerald" /><div><p className="text-lg font-black text-slate-950">Live Processing</p><p className="text-sm text-slate-500">Watch safe feeds from Vinavi and Aasandha move through AI review.</p></div></div>
+          <div className="flex items-center gap-3"><FlatCategoryIcon icon={Bot} tone="emerald" /><div><p className="text-lg font-black text-slate-950">Live Processing</p><p className="text-sm text-slate-500">Only local Vinavi API sync events appear here.</p></div></div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => seedConsultations(500)} disabled={seeding} className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-60 cursor-pointer"><Database className="h-4 w-4" />{seeding ? "Seeding..." : "Seed 500 consultations"}</button>
-            <button onClick={clearQueue} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer">Clear queue</button>
-            <button onClick={() => setRunning(!running)} className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800 cursor-pointer"><Play className="h-4 w-4" />{running ? "Pause" : "Start"}</button>
+            <button onClick={() => void loadVinaviFeed(true)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer"><RefreshCw className="h-4 w-4" />Sync Vinavi API</button>
+            <button onClick={toggleSync} className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-xs font-black text-white cursor-pointer ${syncPaused ? "bg-emerald-600 hover:bg-emerald-500" : "bg-slate-950 hover:bg-slate-800"}`}><Play className="h-4 w-4" />{syncPaused ? "Resume Vinavi sync" : "Pause Vinavi sync"}</button>
           </div>
         </div>
       </Panel>
@@ -930,15 +957,15 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-4">
         <Panel className="p-5">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <div><p className="text-sm font-black text-slate-800">Processing queue</p><p className="text-xs text-slate-500">Only API-seeded feed items appear here. Static history is hidden.</p></div>
+            <div><p className="text-sm font-black text-slate-800">Vinavi API feed</p><p className="text-xs text-slate-500">Generated seed rows and demo histories are hidden from this screen.</p></div>
             <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={loadSeededQueue} className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-[10px] font-black text-slate-600 hover:text-slate-950 cursor-pointer"><RefreshCw className="h-3.5 w-3.5" />Sync API</button>
+              {lastSync && <span className="rounded-2xl border border-white/80 bg-white/70 px-3 py-2 text-[10px] font-black text-slate-500">Last sync {new Date(lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>}
               <div className="flex flex-wrap gap-1 rounded-2xl border border-white/80 bg-white/70 p-1">
-                {(["24h", "seeded", "critical", "foreign"] as IntakeScope[]).map((item) => <button key={item} onClick={() => setScope(item)} className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${scope === item ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-950"}`}>{item === "foreign" ? "source" : item}</button>)}
+                {(["all", "ready", "pending"] as IntakeScope[]).map((item) => <button key={item} onClick={() => setScope(item)} className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${scope === item ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-950"}`}>{item}</button>)}
               </div>
             </div>
           </div>
-          {queueError && <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">Seed queue API fallback active: {queueError}</div>}
+          {queueError && <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">Vinavi API sync issue: {queueError}</div>}
 
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mb-4">
             {bots.map((bot, index) => {
@@ -949,36 +976,36 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
           </div>
 
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-            {visibleSeeded.length === 0 && <div className="rounded-3xl border border-dashed border-slate-200 bg-white/60 p-8 text-center"><p className="text-sm font-black text-slate-700">No fetched episodes are showing.</p><p className="mt-1 text-xs text-slate-500">Press Seed 500 consultations to simulate Vinavi and Aasandha sending safe feed events.</p></div>}
-            {visibleSeeded.map((item, index) => <IntakeSeedRow key={item.id} item={item} done={item.status === "done" || index < step} onOpen={() => setSelectedSeed(item)} />)}
+            {visibleEvents.length === 0 && <div className="rounded-3xl border border-dashed border-slate-200 bg-white/60 p-8 text-center"><p className="text-sm font-black text-slate-700">No Vinavi feed events are visible.</p><p className="mt-1 text-xs text-slate-500">Create or close a consultation in the local Vinavi portal, then sync this API feed.</p></div>}
+            {visibleEvents.map((item, index) => <VinaviFeedRow key={`${item.status}-${item.episodeId}`} item={item} active={index === step % Math.max(1, visibleEvents.length)} />)}
           </div>
         </Panel>
 
         <div className="space-y-4">
           <StatCard label="Queue size" value={queueSize.toLocaleString()} icon={ClipboardList} tone="blue" sub="Visible filtered workload" />
-          <StatCard label="Done this cycle" value={completed.toLocaleString()} icon={ClipboardCheck} tone="emerald" sub="Marked after bot review" />
-          <StatCard label="Seeded feed" value={(seedSummary?.totalQueued ?? seeded.length).toLocaleString()} icon={Database} tone="amber" sub="Vinavi + Aasandha test load" />
+          <StatCard label="Ready for AI" value={readyCount.toLocaleString()} icon={ClipboardCheck} tone="emerald" sub="Released by Vinavi ingest" />
+          <StatCard label="Held blank episodes" value={pendingCount.toLocaleString()} icon={Database} tone="amber" sub="20 minute writing window" />
           <Panel className="p-4">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Queue distribution</p>
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Sync state</p>
             <div className="mt-3 grid gap-2">
-              {(seedSummary?.agents ?? []).map((row) => <div key={row.agent} className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">{row.agent}</span><span className="font-mono font-black text-blue-700">{row.count}</span></div>)}
-              {!seedSummary && <p className="text-xs text-slate-500">Seed from Vinavi to populate the API queue.</p>}
+              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Local Vinavi API</span><span className={`font-black ${syncPaused ? "text-amber-600" : "text-emerald-600"}`}>{syncPaused ? "Paused" : "Syncing"}</span></div>
+              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Total received</span><span className="font-mono font-black text-blue-700">{(snapshot?.total ?? 0).toLocaleString()}</span></div>
+              <div className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">Static seed UI</span><span className="font-black text-slate-500">Removed</span></div>
             </div>
           </Panel>
-          <button onClick={() => onShowEncounters("all", undefined, "All surveillance episodes") } className="w-full rounded-2xl bg-slate-950 text-white px-4 py-4 text-sm font-black hover:bg-slate-800 cursor-pointer shadow-xl">Open patient episode log</button>
-          <LiveOpenRouterProbe />
+          <LiveOpenRouterProbe event={visibleEvents.find((item) => item.status === "ready")} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Panel className="p-5">
           <div className="flex items-center gap-2 mb-3"><SlidersHorizontal className="h-4 w-4 text-blue-600" /><p className="text-sm font-black text-slate-800">Add context for this run</p></div>
-          <textarea value={manualNote} onChange={(event) => setManualNote(event.target.value)} className="min-h-28 w-full resize-none rounded-3xl border border-slate-100 bg-white/80 px-4 py-3 text-sm leading-relaxed text-slate-700 outline-none focus:border-blue-200" />
-          <button onClick={runPipeline} disabled={pipelineRunning || visibleSeeded.length === 0} className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"><Sparkles className="h-4 w-4" />{pipelineRunning ? "Running AI pipeline..." : "Run 3-stage AI review"}</button>
+          <textarea value={manualNote} onChange={(event) => setManualNote(event.target.value)} placeholder="Optional operator context for this Vinavi sync window." className="min-h-28 w-full resize-none rounded-3xl border border-slate-100 bg-white/80 px-4 py-3 text-sm leading-relaxed text-slate-700 outline-none focus:border-blue-200" />
+          <button onClick={runPipeline} disabled={pipelineRunning || visibleEvents.filter((item) => item.status === "ready").length === 0} className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"><Sparkles className="h-4 w-4" />{pipelineRunning ? "Running AI pipeline..." : "Run 3-stage AI review"}</button>
         </Panel>
         <Panel className="p-5">
           <div className="flex items-center gap-2 mb-3"><FlaskConical className="h-4 w-4 text-blue-600" /><p className="text-sm font-black text-slate-800">Final answer</p></div>
-          {!pipelineResult && <p className="text-sm text-slate-500">Run the review to see the generated briefing. If the API key is not added yet, the system still shows the local privacy purge result.</p>}
+          {!pipelineResult && <p className="text-sm text-slate-500">Run the review after Vinavi sends at least one ready consultation. The pipeline uses only safe feed fields.</p>}
           {pipelineResult?.error && <p className="rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{pipelineResult.error}</p>}
           {pipelineResult?.purgeSummary && <div className="rounded-2xl bg-emerald-50 p-3 text-xs font-bold text-emerald-800">Privacy purge checked {pipelineResult.purgeSummary.recordCount} records. Removed {pipelineResult.purgeSummary.removedFieldCount} identity field(s) and scrubbed {pipelineResult.purgeSummary.scrubbedTextSpans} text span(s).</div>}
           {pipelineResult?.paused && <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-800">AI is paused until OPENROUTER_API_KEY is added to .env.local.</p>}
@@ -986,8 +1013,29 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
           {pipelineResult?.briefing && <div className="mt-3 space-y-2"><p className="text-sm font-black text-slate-900">{pipelineResult.briefing.briefing}</p><p className="text-xs font-bold uppercase text-blue-700">Priority: {pipelineResult.briefing.priorityLevel}</p>{pipelineResult.briefing.recommendedActions?.map((action) => <p key={action} className="rounded-xl bg-white/75 px-3 py-2 text-xs text-slate-600">{action}</p>)}</div>}
         </Panel>
       </div>
-      {selectedSeed && <IntakeAssessmentOverlay item={selectedSeed} onClose={() => setSelectedSeed(null)} />}
     </div>
+  );
+}
+
+function VinaviFeedRow({ item, active }: { item: VinaviFeedEvent; active: boolean }) {
+  const received = new Date(item.receivedAt);
+  return (
+    <motion.div layout animate={{ y: active ? -2 : 0 }} transition={{ type: "spring", stiffness: 260, damping: 22 }} className={`rounded-2xl border px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] ${active ? "border-blue-200 bg-blue-50/80" : "border-slate-100 bg-white/80"}`}>
+      <div className="flex items-center gap-3">
+        <span className={`h-10 w-10 rounded-2xl flex items-center justify-center text-xs font-black ${item.status === "ready" ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-700"}`}>{item.status === "ready" ? "AI" : "20m"}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-black text-slate-800">{item.episodeId}</p>
+          <p className="text-[11px] text-slate-500">Vinavi · {item.facilityId} · {received.toLocaleDateString()} {received.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${item.status === "ready" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{item.status}</span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-500 md:grid-cols-4">
+        <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">Clinical:</strong> {item.diagnosis ?? "not coded"}</span>
+        <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">ICD:</strong> {item.icd10Code ?? "pending"}</span>
+        <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">Sections:</strong> {item.sectionCount}</span>
+        <span className="rounded-xl bg-white/70 px-3 py-2"><strong className="text-slate-700">Vitals:</strong> {item.hasVitals ? "yes" : "no"}</span>
+      </div>
+    </motion.div>
   );
 }
 
@@ -1041,7 +1089,7 @@ function IntakeAssessmentOverlay({ item, onClose }: { item: SeededConsultationLi
   );
 }
 
-function LiveOpenRouterProbe() {
+function LiveOpenRouterProbe({ event }: { event?: VinaviFeedEvent }) {
   type ProbeResult = {
     redacted?: Record<string, unknown>;
     audit?: { removedFields: string[]; sourceHash: string; redactedTextSpans: number };
@@ -1054,17 +1102,25 @@ function LiveOpenRouterProbe() {
   const runProbe = async () => {
     setRunning(true);
     setResult(null);
-    const encounter = encountersFor("all")[0];
-    // Synthesize PHI-shaped fields onto the encounter so the redactor has something to strip.
+    if (!event) {
+      setResult({ error: "No ready Vinavi episode is available yet. Create or close a consultation in Vinavi, then sync." });
+      setRunning(false);
+      return;
+    }
     const raw = {
-      ...encounter,
-      name: "REDACT_ME Patient Name",
-      nationalId: "A123456",
-      dateOfBirth: "1988-03-12",
-      phone: "+960 7771234",
-      address: "Maa. Sample Villa, Male",
-      clinicianNotes: `Mr. REDACT_ME Patient Name (DOB: 1988-03-12, phone +960 7771234) presented with ${encounter.symptoms.join(", ")}. Plan: ${encounter.prescriptionSignals.join("; ")}.`,
-      nationality: encounter.origin === "foreign" ? "Foreign" : "Maldivian",
+      episodeId: event.episodeId,
+      facilityId: event.facilityId,
+      diagnosis: event.diagnosis ?? "",
+      icd10Code: event.icd10Code ?? undefined,
+      openedAt: event.receivedAt,
+      closedAt: event.receivedAt,
+      status: "closed",
+      origin: event.origin,
+      sections: [{
+        type: "vinavi_safe_sync",
+        content: `Vinavi safe sync event. Diagnosis: ${event.diagnosis ?? "not coded"}. ICD-10: ${event.icd10Code ?? "pending"}. Clinical sections: ${event.sectionCount}. Vitals present: ${event.hasVitals ? "yes" : "no"}.`,
+        createdAt: event.receivedAt,
+      }],
     };
     try {
       const response = await fetch("/api/ai/analyze-episode", {
@@ -1073,6 +1129,7 @@ function LiveOpenRouterProbe() {
         body: JSON.stringify({ episode: raw }),
       });
       const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
       setResult(payload);
     } catch (caught) {
       setResult({ error: caught instanceof Error ? caught.message : "Probe failed" });
@@ -1085,9 +1142,9 @@ function LiveOpenRouterProbe() {
     <Panel className="p-4">
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-emerald-600" /><p className="text-sm font-black text-slate-800">Test AI connection</p></div>
-        <button onClick={runProbe} disabled={running} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">{running ? "Running..." : "Test 1 episode"}</button>
+        <button onClick={runProbe} disabled={running} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">{running ? "Running..." : "Test Vinavi event"}</button>
       </div>
-      <p className="text-[11px] text-slate-500 mb-2">Pulls one episode, strips private fields, sends safe data to the AI stack, and shows the returned result.</p>
+      <p className="text-[11px] text-slate-500 mb-2">Uses the current ready Vinavi event, strips unsafe fields, and sends only the safe sync payload to the AI stack.</p>
       {result?.error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700">{result.error}</p>}
       {result?.audit && (
         <div className="space-y-2 text-[11px]">
@@ -1129,6 +1186,7 @@ function LoggingView({ logs }: { logs: LogEntry[] }) {
       <Panel className="overflow-hidden">
         <div className="px-4 py-3 border-b border-white/70 flex items-center gap-2"><ScrollText className="h-4 w-4 text-slate-500" /><span className="text-sm font-black text-slate-800">System Event Log</span></div>
         <div className="divide-y divide-slate-100 max-h-[65vh] overflow-y-auto">
+          {logs.length === 0 && <div className="px-4 py-10 text-center"><p className="text-sm font-black text-slate-700">No static logs are loaded.</p><p className="mt-1 text-xs text-slate-500">Use Live Processing to sync Vinavi or run the AI detector; those actions will appear here.</p></div>}
           {logs.map((log) => { const ts = new Date(log.timestamp); return (
             <div key={log.id} className="flex items-start gap-3 px-4 py-3 hover:bg-white/60">
               <span className={`shrink-0 text-[10px] font-black uppercase px-2 py-1 rounded-lg ${logLevelStyles[log.level]}`}>{log.level}</span>

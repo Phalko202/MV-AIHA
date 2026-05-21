@@ -17,6 +17,7 @@ import {
   getReadyConsultations,
   getPendingConsultations,
   storeSize,
+  type PendingConsultation,
   type VinaviConsultationPayload,
 } from "@/lib/consultation-store";
 
@@ -130,11 +131,32 @@ export async function PATCH(request: NextRequest) {
   });
 }
 
-/** GET /api/vinavi/ingest — returns store summary (non-sensitive) */
+function toSafeEvent(record: PendingConsultation, status: "ready" | "pending") {
+  const payload = record.payload;
+  return {
+    episodeId: payload.episodeId,
+    facilityId: payload.facilityId,
+    diagnosis: payload.diagnosis?.trim() || null,
+    icd10Code: payload.icd10Code ?? null,
+    status,
+    receivedAt: record.receivedAt,
+    pendingUntil: status === "pending" ? record.pendingUntil : null,
+    sectionCount: payload.sections.filter((section) => section.content.trim()).length,
+    hasVitals: Boolean(payload.vitals?.length),
+    origin: payload.origin ?? "local",
+  };
+}
+
+/** GET /api/vinavi/ingest — returns non-sensitive API sync summary and event tokens */
 export async function GET() {
+  const ready = getReadyConsultations();
+  const pending = getPendingConsultations();
   return NextResponse.json({
     total: storeSize(),
-    ready: getReadyConsultations().length,
-    pending: getPendingConsultations().length,
+    ready: ready.length,
+    pending: pending.length,
+    readyEvents: ready.slice(-100).reverse().map((record) => toSafeEvent(record, "ready")),
+    pendingEvents: pending.slice(-50).reverse().map((record) => toSafeEvent(record, "pending")),
+    updatedAt: new Date().toISOString(),
   });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   ResponsiveContainer,
   LineChart, Line,
@@ -260,8 +261,8 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
         <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[70] bg-slate-950/58 backdrop-blur-md" onClick={() => setOpen(false)}>
+      {open && typeof document !== "undefined" && createPortal((
+        <div className="fixed inset-0 z-[1000] bg-slate-950/58 backdrop-blur-md" onClick={() => setOpen(false)}>
           <div className="relative flex h-screen w-screen flex-col bg-white shadow-[0_40px_120px_rgba(15,23,42,0.28)]" onClick={(event) => event.stopPropagation()}>
             {/* sticky header */}
             <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/75 to-cyan-50/65 px-6 py-5 xl:px-8">
@@ -402,7 +403,7 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   );
 }
