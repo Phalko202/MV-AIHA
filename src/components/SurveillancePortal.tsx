@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Activity, AlertTriangle, BarChart3, Bot, BrainCircuit, Building2, Check, ChevronDown, ChevronRight, ClipboardCheck, ClipboardList,
-  Database, FileCheck, FileText, FlaskConical, Globe, Image, LayoutDashboard,
+  Database, FileCheck, FileText, FlaskConical, Globe, LayoutDashboard,
   Lock, Map, Microscope, Network, Play, RefreshCw, ScrollText, Search, ShieldAlert, SlidersHorizontal, Sparkles, Stethoscope,
-  UploadCloud, UserRound, Users, UsersRound, X,
-  Thermometer, Bug, GlassWater, Flame, Brain, HeartPulse, Droplet, Dna,
+  UserRound, Users, UsersRound, X,
+  Bug, GlassWater, Brain, HeartPulse, Droplet,
 } from "lucide-react";
 import { Brain as PhosphorBrain, FirstAidKit, GitBranch, Robot } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
@@ -42,9 +42,9 @@ const NAV_ITEMS: NavItem[] = [
   { id: "map", label: "Maldives Disease Map", icon: Map, iconUrl: "/icons/people/earth.png" },
   { id: "analytics", label: "Interactive Analytics", icon: BarChart3, iconUrl: "/icons/people/chart.png" },
   { id: "outbreaks", label: "Disease Signals", icon: AlertTriangle, iconUrl: "/icons/3d/target.png" },
-  { id: "patients", label: "Patient Cohorts", icon: Users, iconUrl: "/icons/3d/boy.png" },
-  { id: "foreignAudit", label: "External Patient Intelligence", icon: FileCheck, iconUrl: "/icons/3d/file-text.png" },
-  { id: "fetching", label: "Live Surveillance Intake", icon: Database, iconUrl: "/icons/3d/wifi.png" },
+  { id: "patients", label: "Patient Statistics", icon: Users, iconUrl: "/icons/3d/boy.png" },
+  { id: "foreignAudit", label: "All Patient Statistics", icon: FileCheck, iconUrl: "/icons/3d/file-text.png" },
+  { id: "fetching", label: "Live Processing", icon: Database, iconUrl: "/icons/3d/wifi.png" },
   { id: "logging", label: "System Logs", icon: ScrollText, iconUrl: "/icons/3d/notebook.png" },
   { id: "reports", label: "AI Reports", icon: FileText, iconUrl: "/icons/3d/folder.png" },
 ];
@@ -253,7 +253,7 @@ export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: bo
           )}
           {view === "outbreaks" && <OutbreaksView onShowEncounters={showEncounters} />}
           {view === "patients" && <PatientSummaryView onShowEncounters={showEncounters} />}
-          {view === "foreignAudit" && <ForeignAuditView onShowEncounters={showEncounters} />}
+          {view === "foreignAudit" && <PatientStatisticsView onShowEncounters={showEncounters} />}
           {view === "fetching" && <LiveFetchingView onShowEncounters={showEncounters} />}
           {view === "logging" && <LoggingView logs={logs} />}
           {view === "reports" && <ReportsView onOpen={setSelectedReport} analyticsFilters={analyticsFilters} aiPaused={aiPaused} />}
@@ -281,6 +281,22 @@ function IconTile({ icon: Icon, tone = "blue", compact = false, imageUrl }: { ic
     <div className={`mv-skeuo-icon mv-skeuo-${tone} ${compact ? "h-10 w-10" : "h-12 w-12"} shrink-0 rounded-2xl relative overflow-hidden flex items-center justify-center`}>
       <Icon className={`${compact ? "h-5 w-5" : "h-6 w-6"} text-white relative z-10 drop-shadow`} />
     </div>
+  );
+}
+
+function FlatCategoryIcon({ icon: Icon, tone = "blue", compact = false }: { icon: React.ComponentType<{ className?: string }>; tone?: "blue" | "emerald" | "amber" | "rose" | "violet" | "slate"; compact?: boolean }) {
+  const tones = {
+    blue: "bg-blue-50 text-blue-700 border-blue-100",
+    emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
+    amber: "bg-amber-50 text-amber-700 border-amber-100",
+    rose: "bg-rose-50 text-rose-700 border-rose-100",
+    violet: "bg-violet-50 text-violet-700 border-violet-100",
+    slate: "bg-slate-100 text-slate-700 border-slate-200",
+  };
+  return (
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-2xl border ${tones[tone]} ${compact ? "h-10 w-10" : "h-12 w-12"}`}>
+      <Icon className={compact ? "h-5 w-5" : "h-6 w-6"} />
+    </span>
   );
 }
 
@@ -469,8 +485,8 @@ function DashboardView({ summary, incidents, facilities, onFacilityClick, onShow
               <div className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs font-bold text-blue-100 mb-4">
                 <img src={APP_ICON.shield} alt="" className="h-7 w-7 object-contain drop-shadow-[0_12px_18px_rgba(15,23,42,0.2)]" /> AI disease surveillance engine
               </div>
-              <h2 className="max-w-2xl text-3xl font-black tracking-tight">Maldives disease signals, external-patient intelligence, and facility-level classification in one command surface.</h2>
-              <p className="mt-3 max-w-xl text-sm text-blue-100/80">Markers are triggered by same-disease daily case thresholds, not beds or ventilators. More than 10 same-day cases becomes moderate; more than 20 becomes critical.</p>
+              <h2 className="max-w-2xl text-3xl font-black tracking-tight">Maldives disease signals, patient statistics, and facility alerts in one command surface.</h2>
+              <p className="mt-3 max-w-xl text-sm text-blue-100/80">This portal observes safe feeds from connected systems. It does not upload patient files or store source records.</p>
             </div>
             <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
               <HeroMetric label="Patients" value={summary.totalPatients} />
@@ -588,16 +604,16 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
   const diseases = DISEASES.map((disease) => ({ disease, count: encountersFor(disease.code).length })).sort((a, b) => b.count - a.count);
 
   const diseaseIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-    ili: Thermometer,
+    ili: Stethoscope,
     dengue: Bug,
     gastro: GlassWater,
     febrile_seizure: Brain,
     chest_pain: HeartPulse,
     dehydration: Droplet,
-    influenza: Dna,
-    pneumonia: ShieldAlert,
-    diarrhea: Flame,
-    hfmd: Sparkles,
+    influenza: Stethoscope,
+    pneumonia: Stethoscope,
+    diarrhea: GlassWater,
+    hfmd: Stethoscope,
   };
 
   const diseaseTones: Record<string, "blue" | "emerald" | "amber" | "rose" | "violet" | "slate"> = {
@@ -636,7 +652,7 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
             return (
               <button key={row.disease.code} onClick={() => onShowEncounters(row.disease.code, undefined, `${row.disease.name} - all de-identified episodes`)} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white/70 p-3 hover:shadow-md transition-shadow text-left cursor-pointer">
                 <div className="flex items-center gap-3">
-                  <IconTile icon={IconComponent} tone={tone} compact />
+                  <FlatCategoryIcon icon={IconComponent} tone={tone} compact />
                   <div>
                     <p className="text-sm font-black text-slate-800">{row.disease.name}</p>
                     <p className="text-[11px] text-slate-500">{row.disease.icd10} - {row.disease.category}</p>
@@ -681,58 +697,54 @@ function PatientDiseaseMenu({ value, onChange }: { value: DiseaseCode | "all"; o
   );
 }
 
-function ForeignAuditView({ onShowEncounters }: { onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void }) {
+function PatientStatisticsView({ onShowEncounters }: { onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void }) {
   const foreignList = foreignEncounters();
+  const allEpisodes = encountersFor("all");
   const dengueForeign = foreignList.filter((item) => item.diseaseCode === "dengue");
-  const sourceRows = ["registry_feed", "prescription_image", "ehr", "manual_review"].map((source) => ({
+  const localEpisodes = allEpisodes.filter((item) => item.origin === "local");
+  const severe = allEpisodes.filter((item) => item.severity === "severe" || item.severity === "critical");
+  const sourceRows = ["vinavi", "aasandha", "foreign_portal", "manual_review"].map((source) => ({
     source,
-    count: source === "registry_feed"
-      ? foreignList.filter((item) => item.source === "facility_registry").length
-      : foreignList.filter((item) => item.source === source).length,
+    label: source === "vinavi" ? "Vinavi consultations" : source === "aasandha" ? "Aasandha links" : source === "foreign_portal" ? "Foreign portal feed" : "Manual review",
+    count: source === "vinavi" ? allEpisodes.length : source === "aasandha" ? PATIENTS.length : source === "foreign_portal" ? foreignList.length : allEpisodes.filter((item) => item.source === "manual_review").length,
   }));
-  const sourceLabel = (source: string) => ({
-    registry_feed: "Clinic registry",
-    prescription_image: "Prescription image",
-    ehr: "EHR feed",
-    manual_review: "Manual review",
-  }[source] ?? source.replace("_", " "));
   return (
     <div className="space-y-4">
       <Panel className="p-5 bg-gradient-to-br from-white/85 to-blue-50/80">
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-5 items-center">
           <div>
-            <div className="flex items-center gap-2 mb-2"><IconTile icon={FileCheck} tone="emerald" /><div><p className="text-lg font-black text-slate-950">External Patient Intelligence</p><p className="text-xs text-slate-500">Secure facility intake and prescription-image review for non-local disease signals</p></div></div>
-            <p className="text-sm text-slate-600 max-w-3xl">The audit separates local IDs from passport, hospital-number, unknown foreign, and mixed-format identifiers. The AI uses diagnosis text, symptom evidence, facility context, and prescription clues to classify disease without storing patient names in reports.</p>
+            <div className="flex items-center gap-2 mb-2"><IconTile icon={UsersRound} tone="emerald" /><div><p className="text-lg font-black text-slate-950">All Patient Statistics</p><p className="text-xs text-slate-500">Read-only view of local, foreign, and source-linked patient counts</p></div></div>
+            <p className="text-sm text-slate-600 max-w-3xl">This portal does not upload or store patient files. It observes safe feeds from Vinavi, Aasandha, and the future foreign-patient portal, then shows simple totals for the surveillance team.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <MiniStat label="Foreign episodes" value={foreignList.length.toLocaleString()} tone="amber" />
-            <MiniStat label="Foreign dengue" value={dengueForeign.length.toLocaleString()} tone="rose" />
+            <MiniStat label="All episodes" value={allEpisodes.length.toLocaleString()} tone="blue" />
+            <MiniStat label="Patients" value={PATIENTS.length.toLocaleString()} tone="emerald" />
           </div>
         </div>
       </Panel>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <UploadCard icon={FileCheck} title="Secure registry intake" sub="Facility line-list connector" />
-        <UploadCard icon={Database} title="Connect clinical source" sub="EHR or approved API feed" />
-        <UploadCard icon={Image} title="Review prescription image" sub="OCR-assisted medication clues" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Local episodes" value={localEpisodes.length.toLocaleString()} icon={Users} tone="blue" sub="From local patient feeds" />
+        <StatCard label="Foreign episodes" value={foreignList.length.toLocaleString()} icon={Globe} tone="amber" sub="From foreign portal feed" />
+        <StatCard label="Foreign dengue" value={dengueForeign.length.toLocaleString()} icon={Bug} tone="rose" sub="Watch cohort" />
+        <StatCard label="Severe / critical" value={severe.length.toLocaleString()} icon={AlertTriangle} tone="rose" sub="Needs review" />
       </div>
 
       <OriginComparison disease="dengue" onShowEncounters={onShowEncounters} />
 
       <Panel className="overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/70 flex items-center gap-2"><FileCheck className="h-4 w-4 text-blue-600" /><span className="text-sm font-black text-slate-800">Imported row classification preview</span></div>
+        <div className="px-4 py-3 border-b border-white/70 flex items-center gap-2"><FileCheck className="h-4 w-4 text-blue-600" /><span className="text-sm font-black text-slate-800">Observed foreign-portal classifications</span></div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-white/50 text-left text-[10px] uppercase tracking-wide text-slate-500 font-black"><tr><th className="px-4 py-3">Source channel</th><th className="px-4 py-3">Identifier pattern</th><th className="px-4 py-3">Age/Sex</th><th className="px-4 py-3">Clinical text</th><th className="px-4 py-3">AI disease</th><th className="px-4 py-3">Prescription signal</th><th className="px-4 py-3">Action</th></tr></thead>
+            <thead className="bg-white/50 text-left text-[10px] uppercase tracking-wide text-slate-500 font-black"><tr><th className="px-4 py-3">Source</th><th className="px-4 py-3">Safe token</th><th className="px-4 py-3">Age/Sex</th><th className="px-4 py-3">Clinical summary</th><th className="px-4 py-3">Disease</th><th className="px-4 py-3">Action</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {IMPORTED_FOREIGN_ROWS.map((row) => (
+              {IMPORTED_FOREIGN_ROWS.slice(0, 8).map((row) => (
                 <tr key={row.row} className="hover:bg-white/60">
-                  <td className="px-4 py-3 font-bold text-slate-700">{sourceLabel(row.source)}</td>
-                  <td className="px-4 py-3 font-mono text-slate-600">{row.identifierSample}<br /><span className="text-[10px] text-slate-400">{row.identifierKind}</span></td>
+                  <td className="px-4 py-3 font-bold text-slate-700">Foreign portal</td>
+                  <td className="px-4 py-3 font-mono text-slate-600">FP-{row.row.toString().padStart(4, "0")}<br /><span className="text-[10px] text-slate-400">identifier kept outside this portal</span></td>
                   <td className="px-4 py-3 text-slate-700">{row.age} / {row.gender}</td>
                   <td className="px-4 py-3 text-slate-600 max-w-xs">{row.diagnosisText}</td>
                   <td className="px-4 py-3"><span className="px-2 py-1 rounded-lg bg-red-50 text-red-700 font-black">{DISEASE_BY_CODE[row.diseaseCode].name}</span><br /><span className="text-[10px] text-slate-400">conf. {row.aiConfidence.toFixed(2)}</span></td>
-                  <td className="px-4 py-3 text-slate-600 max-w-xs">{row.prescriptionText}</td>
                   <td className="px-4 py-3"><span className={`px-2 py-1 rounded-lg font-black ${row.action === "auto-classified" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{row.action}</span></td>
                 </tr>
               ))}
@@ -742,41 +754,33 @@ function ForeignAuditView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
       </Panel>
 
       <Panel className="p-4">
-        <p className="text-sm font-black text-slate-800 mb-3">Source mix</p>
+        <p className="text-sm font-black text-slate-800 mb-3">Connected source summary</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          {sourceRows.map((row) => <MiniStat key={row.source} label={sourceLabel(row.source)} value={row.count.toLocaleString()} tone={row.source === "prescription_image" ? "rose" : row.source === "registry_feed" ? "emerald" : "blue"} />)}
+          {sourceRows.map((row) => <MiniStat key={row.source} label={row.label} value={row.count.toLocaleString()} tone={row.source === "manual_review" ? "rose" : row.source === "foreign_portal" ? "amber" : "blue"} />)}
         </div>
       </Panel>
     </div>
   );
 }
 
-function UploadCard({ icon, title, sub }: { icon: React.ComponentType<{ className?: string }>; title: string; sub: string }) {
-  return (
-    <Panel className="p-4 hover:-translate-y-0.5 transition-transform duration-300">
-      <div className="flex items-center gap-3 mb-3"><IconTile icon={icon} tone="blue" /><div><p className="text-sm font-black text-slate-800">{title}</p><p className="text-xs text-slate-500">{sub}</p></div></div>
-      <label className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-blue-200 bg-blue-50/60 px-4 py-6 text-xs font-black text-blue-700 cursor-pointer hover:bg-blue-50">
-        <UploadCloud className="h-4 w-4" /> Choose file or connect source
-        <input type="file" className="hidden" accept=".csv,.xlsx,.xls,image/*" />
-      </label>
-    </Panel>
-  );
-}
-
 interface SeededConsultationLite {
   id: string;
   patientId: string;
+  aasandhaNo?: string;
   episodeId: string;
   diagnosis: string;
   facility: string;
+  sourcePortal?: "Vinavi" | "Aasandha";
+  sourceAction?: "patient-linked" | "episode-closed" | "claim-verified";
   createdAt: string;
   status: "queued" | "reading" | "done";
-  stage: "intake" | "clinical-read" | "reasoning" | "research" | "promotion";
-  assignedAgent: "OpenRouter Clinical" | "DeepSeek" | "Research RAG" | "MV-AIHA Router";
+  stage: "received" | "privacy-check" | "clinical-read" | "anomaly-check" | "briefing" | "ready";
+  assignedAgent: "Raw Ingestion Buffer" | "Analytical Synthesizer" | "Strategic Briefing Engine" | "MV-AIHA Router";
   priority: "routine" | "watch" | "urgent";
   confidence: number;
   progress: number;
   interactions: string[];
+  assessment?: string[];
 }
 
 interface SeededQueueSummary {
@@ -792,41 +796,106 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
   const [running, setRunning] = useState(true);
   const [step, setStep] = useState(0);
   const [scope, setScope] = useState<IntakeScope>("24h");
-  const [manualNote, setManualNote] = useState("possible workplace dengue exposure; review foreign-worker cluster logic before public alert");
+  const [manualNote, setManualNote] = useState("Add operator context here, for example: school cluster reported in Hulhumale, verify dengue trend before alert.");
   const [seeded, setSeeded] = useState<SeededConsultationLite[]>([]);
   const [seedSummary, setSeedSummary] = useState<SeededQueueSummary | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [selectedSeed, setSelectedSeed] = useState<SeededConsultationLite | null>(null);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<{ paused?: boolean; purgeSummary?: { recordCount: number; removedFieldCount: number; scrubbedTextSpans: number }; briefing?: { briefing: string; priorityLevel: string; recommendedActions: string[] }; error?: string } | null>(null);
 
   const bots = useMemo(() => [
-    { name: "OpenRouter clinical reader", icon: FirstAidKit, fallback: Stethoscope, task: "reads symptoms, vitals, prescriptions, and clinician notes", model: "openrouter-free" },
-    { name: "DeepSeek reasoning agent", icon: PhosphorBrain, fallback: BrainCircuit, task: "checks inconsistencies, travel context, and manual judgement", model: "deepseek-r1" },
-    { name: "Epi research synthesizer", icon: Robot, fallback: Microscope, task: "matches guidance, citations, thresholds, and report evidence", model: "epidemiology-rag" },
-    { name: "MV-AIHA orchestrator", icon: GitBranch, fallback: Network, task: "batches high-load consultations without blocking the queue", model: "router" },
+    { name: "Raw Ingestion Buffer", icon: FirstAidKit, task: "cleans incoming batches", model: "DeepSeek V4 Flash" },
+    { name: "Analytical Synthesizer", icon: PhosphorBrain, task: "checks spikes and baselines", model: "Nemotron 3 Super" },
+    { name: "Strategic Briefing", icon: Robot, task: "writes final health brief", model: "GPT-OSS 120B" },
+    { name: "MV-AIHA Router", icon: GitBranch, task: "releases only safe totals", model: "local guard" },
   ], []);
 
-  const baseQueue = useMemo(() => encountersFor("all").slice(0, 18), []);
-  const filteredBaseQueue = baseQueue.filter((encounter) => {
-    if (scope === "critical") return encounter.severity === "critical" || encounter.severity === "severe";
-    if (scope === "foreign") return encounter.origin === "foreign";
-    if (scope === "seeded") return false;
-    return encounter.onsetDate >= "2026-05-14";
+  const visibleSeeded = seeded.filter((item) => {
+    if (scope === "critical") return item.priority === "urgent";
+    if (scope === "foreign") return item.sourcePortal === "Aasandha";
+    return true;
   });
-  const visibleSeeded = scope === "seeded" || scope === "24h" ? seeded.slice(0, 12) : [];
-  const queueSize = filteredBaseQueue.length + visibleSeeded.length;
-  const completed = Math.min(queueSize, step + Math.floor(queueSize * 0.38));
+  const queueSize = visibleSeeded.length;
+  const completed = Math.min(queueSize, step + visibleSeeded.filter((item) => item.status === "done").length);
 
-  const loadSeededQueue = () => {
-    fetch("/api/seed-consultations", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
-      .then((payload) => {
-        setSeeded((payload.consultations ?? []) as SeededConsultationLite[]);
-        setSeedSummary((payload.summary ?? null) as SeededQueueSummary | null);
-        setQueueError(null);
-      })
-      .catch((error) => {
-        setQueueError(error instanceof Error ? error.message : "Seed queue unavailable");
-        setSeeded([]);
+  const loadSeededQueue = async () => {
+    try {
+      const response = await fetch("/api/seed-consultations", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      setSeeded((payload.consultations ?? []) as SeededConsultationLite[]);
+      setSeedSummary((payload.summary ?? null) as SeededQueueSummary | null);
+      setQueueError(null);
+    } catch (error) {
+      setQueueError(error instanceof Error ? error.message : "Seed queue unavailable");
+      setSeeded([]);
+    }
+  };
+
+  const seedConsultations = async (amount: number) => {
+    setSeeding(true);
+    setQueueError(null);
+    try {
+      const response = await fetch("/api/seed-consultations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
       });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await loadSeededQueue();
+      setScope("seeded");
+    } catch (error) {
+      setQueueError(error instanceof Error ? error.message : "Could not seed consultations");
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const clearQueue = async () => {
+    setQueueError(null);
+    try {
+      const response = await fetch("/api/seed-consultations", { method: "DELETE" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setSeeded([]);
+      setSeedSummary(null);
+      setSelectedSeed(null);
+      setPipelineResult(null);
+    } catch (error) {
+      setQueueError(error instanceof Error ? error.message : "Could not clear queue");
+    }
+  };
+
+  const runPipeline = async () => {
+    setPipelineRunning(true);
+    setPipelineResult(null);
+    const logs = visibleSeeded.slice(0, 40).map((item) => ({
+      sourcePortal: item.sourcePortal ?? "Vinavi",
+      sourceAction: item.sourceAction ?? "episode-closed",
+      patientToken: item.patientId,
+      aasandhaToken: item.aasandhaNo,
+      episodeId: item.episodeId,
+      facility: item.facility,
+      diagnosis: item.diagnosis,
+      priority: item.priority,
+      stage: item.stage,
+      operatorContext: manualNote,
+    }));
+    try {
+      const response = await fetch("/api/ai/surveillance-feed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logs }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+      setPipelineResult(payload.analysis ?? payload);
+    } catch (error) {
+      setPipelineResult({ error: error instanceof Error ? error.message : "Pipeline failed" });
+    } finally {
+      setPipelineRunning(false);
+    }
   };
 
   useEffect(() => {
@@ -847,45 +916,48 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
 
   return (
     <div className="space-y-4">
-      <Panel className="p-5 bg-gradient-to-br from-slate-950 to-blue-950 text-white overflow-hidden relative">
-        <div className="absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(circle at 15% 25%, rgba(56,189,248,0.6), transparent 24%), radial-gradient(circle at 90% 0%, rgba(16,185,129,0.42), transparent 28%)" }} />
-        <div className="relative z-10 flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-start gap-3"><IconTile icon={Bot} tone="emerald" /><div><p className="text-xl font-black">Live Surveillance Intake</p><p className="text-sm text-blue-100/75 max-w-3xl">Shows every 24-hour episode batch, seeded Vinavi consultations, bot interactions, manual judgement, and research synthesis before signals are promoted.</p></div></div>
-          <button onClick={() => setRunning(!running)} className="inline-flex items-center gap-2 rounded-xl bg-white text-slate-950 px-4 py-2 text-xs font-black cursor-pointer hover:bg-blue-50"><Play className="h-4 w-4" />{running ? "Pause bot queue" : "Start bot queue"}</button>
+      <Panel className="p-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3"><FlatCategoryIcon icon={Bot} tone="emerald" /><div><p className="text-lg font-black text-slate-950">Live Processing</p><p className="text-sm text-slate-500">Watch safe feeds from Vinavi and Aasandha move through AI review.</p></div></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => seedConsultations(500)} disabled={seeding} className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-60 cursor-pointer"><Database className="h-4 w-4" />{seeding ? "Seeding..." : "Seed 500 consultations"}</button>
+            <button onClick={clearQueue} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer">Clear queue</button>
+            <button onClick={() => setRunning(!running)} className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800 cursor-pointer"><Play className="h-4 w-4" />{running ? "Pause" : "Start"}</button>
+          </div>
         </div>
       </Panel>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-4">
         <Panel className="p-5">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <div><p className="text-sm font-black text-slate-800">Agentic episode processing</p><p className="text-xs text-slate-500">Batching 100s of consultations per hour through staged AI readers</p></div>
+            <div><p className="text-sm font-black text-slate-800">Processing queue</p><p className="text-xs text-slate-500">Only API-seeded feed items appear here. Static history is hidden.</p></div>
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={loadSeededQueue} className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-[10px] font-black text-slate-600 hover:text-slate-950 cursor-pointer"><RefreshCw className="h-3.5 w-3.5" />Sync API</button>
               <div className="flex flex-wrap gap-1 rounded-2xl border border-white/80 bg-white/70 p-1">
-                {(["24h", "seeded", "critical", "foreign"] as IntakeScope[]).map((item) => <button key={item} onClick={() => setScope(item)} className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${scope === item ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-950"}`}>{item}</button>)}
+                {(["24h", "seeded", "critical", "foreign"] as IntakeScope[]).map((item) => <button key={item} onClick={() => setScope(item)} className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${scope === item ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-950"}`}>{item === "foreign" ? "source" : item}</button>)}
               </div>
             </div>
           </div>
           {queueError && <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">Seed queue API fallback active: {queueError}</div>}
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mb-4">
             {bots.map((bot, index) => {
               const Icon = bot.icon;
               const active = index === step % bots.length;
-              return <motion.div key={bot.name} animate={{ y: active ? -3 : 0, scale: active ? 1.015 : 1 }} transition={{ type: "spring", stiffness: 260, damping: 22 }} className={`rounded-3xl border p-4 transition-all ${active ? "bg-blue-50 border-blue-200 shadow-[0_18px_38px_rgba(37,99,235,0.14)]" : "bg-white/70 border-slate-100"}`}><div className="flex items-center gap-2"><Icon weight="duotone" className={`h-7 w-7 ${active ? "text-blue-600" : "text-slate-400"}`} /><span className="text-[10px] font-black uppercase text-slate-400">{bot.model}</span></div><p className="mt-2 text-sm font-black text-slate-900">{bot.name}</p><p className="mt-1 text-xs leading-relaxed text-slate-500">{bot.task}</p></motion.div>;
+              return <motion.div key={bot.name} animate={{ y: active ? -2 : 0 }} transition={{ type: "spring", stiffness: 260, damping: 22 }} className={`rounded-2xl border p-3 transition-all ${active ? "bg-blue-50 border-blue-200 shadow-[0_12px_24px_rgba(37,99,235,0.12)]" : "bg-white/70 border-slate-100"}`}><div className="flex items-center gap-2"><Icon weight="duotone" className={`h-5 w-5 ${active ? "text-blue-600" : "text-slate-400"}`} /><span className="truncate text-[10px] font-black uppercase text-slate-400">{bot.model}</span></div><p className="mt-1 text-xs font-black text-slate-900">{bot.name}</p><p className="mt-0.5 text-[11px] leading-snug text-slate-500">{bot.task}</p></motion.div>;
             })}
           </div>
 
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-            {visibleSeeded.map((item, index) => <IntakeSeedRow key={item.id} item={item} done={item.status === "done" || index < step} />)}
-            {filteredBaseQueue.map((encounter, index) => <IntakeEpisodeRow key={encounter.id} encounter={encounter} index={index} done={index < completed} />)}
+            {visibleSeeded.length === 0 && <div className="rounded-3xl border border-dashed border-slate-200 bg-white/60 p-8 text-center"><p className="text-sm font-black text-slate-700">No fetched episodes are showing.</p><p className="mt-1 text-xs text-slate-500">Press Seed 500 consultations to simulate Vinavi and Aasandha sending safe feed events.</p></div>}
+            {visibleSeeded.map((item, index) => <IntakeSeedRow key={item.id} item={item} done={item.status === "done" || index < step} onOpen={() => setSelectedSeed(item)} />)}
           </div>
         </Panel>
 
         <div className="space-y-4">
           <StatCard label="Queue size" value={queueSize.toLocaleString()} icon={ClipboardList} tone="blue" sub="Visible filtered workload" />
           <StatCard label="Done this cycle" value={completed.toLocaleString()} icon={ClipboardCheck} tone="emerald" sub="Marked after bot review" />
-          <StatCard label="Seeded from Vinavi" value={(seedSummary?.totalQueued ?? seeded.length).toLocaleString()} icon={Database} tone="amber" sub="API-backed consultation load" />
+          <StatCard label="Seeded feed" value={(seedSummary?.totalQueued ?? seeded.length).toLocaleString()} icon={Database} tone="amber" sub="Vinavi + Aasandha test load" />
           <Panel className="p-4">
             <p className="text-xs font-black uppercase tracking-wide text-slate-500">Queue distribution</p>
             <div className="mt-3 grid gap-2">
@@ -893,36 +965,38 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
               {!seedSummary && <p className="text-xs text-slate-500">Seed from Vinavi to populate the API queue.</p>}
             </div>
           </Panel>
-          <button onClick={() => onShowEncounters("all", undefined, "Fetched surveillance episodes - all sources")} className="w-full rounded-2xl bg-slate-950 text-white px-4 py-4 text-sm font-black hover:bg-slate-800 cursor-pointer shadow-xl">Open fetched encounter log</button>
-          <LiveOpenRouterProbe />
+          <button onClick={() => onShowEncounters("all", undefined, "All surveillance episodes") } className="w-full rounded-2xl bg-slate-950 text-white px-4 py-4 text-sm font-black hover:bg-slate-800 cursor-pointer shadow-xl">Open patient episode log</button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Panel className="p-5">
-          <div className="flex items-center gap-2 mb-3"><SlidersHorizontal className="h-4 w-4 text-blue-600" /><p className="text-sm font-black text-slate-800">Manual judgement loop</p></div>
+          <div className="flex items-center gap-2 mb-3"><SlidersHorizontal className="h-4 w-4 text-blue-600" /><p className="text-sm font-black text-slate-800">Add context for this run</p></div>
           <textarea value={manualNote} onChange={(event) => setManualNote(event.target.value)} className="min-h-28 w-full resize-none rounded-3xl border border-slate-100 bg-white/80 px-4 py-3 text-sm leading-relaxed text-slate-700 outline-none focus:border-blue-200" />
-          <div className="mt-3 rounded-3xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-relaxed text-slate-700"><span className="font-black text-blue-700">OpenRouter clinical + DeepSeek response:</span> judgement accepted as contextual evidence. The orchestrator will down-rank automatic public alerting until facility exposure, travel, and prescription evidence agree.</div>
+          <button onClick={runPipeline} disabled={pipelineRunning || visibleSeeded.length === 0} className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"><Sparkles className="h-4 w-4" />{pipelineRunning ? "Running AI pipeline..." : "Run 3-stage AI review"}</button>
         </Panel>
         <Panel className="p-5">
-          <div className="flex items-center gap-2 mb-3"><FlaskConical className="h-4 w-4 text-blue-600" /><p className="text-sm font-black text-slate-800">Research synthesis</p></div>
-          <div className="grid gap-3">
-            {["WHO outbreak thresholds", "Maldives notifiable disease guidance", "Facility prescription evidence", "Foreign-worker cluster literature"].map((item, index) => <div key={item} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white/75 px-4 py-3"><span className="text-sm font-bold text-slate-700">{item}</span><span className={`rounded-full px-2 py-1 text-[10px] font-black ${index < 3 ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>{index < 3 ? "linked" : "queued"}</span></div>)}
-          </div>
+          <div className="flex items-center gap-2 mb-3"><FlaskConical className="h-4 w-4 text-blue-600" /><p className="text-sm font-black text-slate-800">Final answer</p></div>
+          {!pipelineResult && <p className="text-sm text-slate-500">Run the review to see the generated briefing. If the API key is not added yet, the system still shows the local privacy purge result.</p>}
+          {pipelineResult?.error && <p className="rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{pipelineResult.error}</p>}
+          {pipelineResult?.purgeSummary && <div className="rounded-2xl bg-emerald-50 p-3 text-xs font-bold text-emerald-800">Privacy purge checked {pipelineResult.purgeSummary.recordCount} records. Removed {pipelineResult.purgeSummary.removedFieldCount} identity field(s) and scrubbed {pipelineResult.purgeSummary.scrubbedTextSpans} text span(s).</div>}
+          {pipelineResult?.paused && <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-800">AI is paused until OPENROUTER_API_KEY is added to .env.local.</p>}
+          {pipelineResult?.briefing && <div className="mt-3 space-y-2"><p className="text-sm font-black text-slate-900">{pipelineResult.briefing.briefing}</p><p className="text-xs font-bold uppercase text-blue-700">Priority: {pipelineResult.briefing.priorityLevel}</p>{pipelineResult.briefing.recommendedActions?.map((action) => <p key={action} className="rounded-xl bg-white/75 px-3 py-2 text-xs text-slate-600">{action}</p>)}</div>}
         </Panel>
       </div>
+      {selectedSeed && <IntakeAssessmentOverlay item={selectedSeed} onClose={() => setSelectedSeed(null)} />}
     </div>
   );
 }
 
-function IntakeSeedRow({ item, done }: { item: SeededConsultationLite; done: boolean }) {
+function IntakeSeedRow({ item, done, onOpen }: { item: SeededConsultationLite; done: boolean; onOpen: () => void }) {
   return (
-    <motion.div layout className="rounded-2xl border border-slate-100 bg-white/80 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+    <motion.button layout onClick={onOpen} className="w-full rounded-2xl border border-slate-100 bg-white/80 px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.04)] transition-all hover:border-blue-200 hover:bg-white hover:shadow-[0_18px_34px_rgba(37,99,235,0.10)] cursor-pointer">
       <div className="flex items-center gap-3">
         <span className={`h-10 w-10 rounded-2xl flex items-center justify-center text-xs font-black ${done ? "bg-emerald-500 text-white" : item.priority === "urgent" ? "bg-rose-100 text-rose-700" : "bg-blue-100 text-blue-700"}`}>{done ? "OK" : "AI"}</span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-black text-slate-800">{item.episodeId} · {item.diagnosis}</p>
-          <p className="text-[11px] text-slate-500">{item.patientId} · {item.facility} · {item.assignedAgent} · {item.stage.replace("-", " ")}</p>
+          <p className="text-[11px] text-slate-500">{item.sourcePortal ?? "Vinavi"} · {item.patientId} · {item.facility} · {item.assignedAgent} · {item.stage.replace("-", " ")}</p>
         </div>
         <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${item.priority === "urgent" ? "bg-rose-50 text-rose-700" : item.priority === "watch" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"}`}>{item.priority}</span>
       </div>
@@ -932,13 +1006,37 @@ function IntakeSeedRow({ item, done }: { item: SeededConsultationLite; done: boo
       <div className="mt-3 grid gap-1">
         {item.interactions.slice(0, 3).map((interaction) => <p key={interaction} className="text-[11px] font-semibold text-slate-500">- {interaction}</p>)}
       </div>
-    </motion.div>
+    </motion.button>
   );
 }
 
-function IntakeEpisodeRow({ encounter, index, done }: { encounter: PatientEncounter; index: number; done: boolean }) {
-  const bot = ["OpenRouter", "DeepSeek", "Research", "Router"][index % 4];
-  return <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white/75 px-4 py-3"><span className={`h-9 w-9 rounded-2xl flex items-center justify-center text-xs font-black ${done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-500"}`}>{done ? "OK" : index + 1}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-800">{encounter.episodeId} · {DISEASE_BY_CODE[encounter.diseaseCode].name}</p><p className="text-[11px] text-slate-500">{bot} reading {encounter.source.replace("_", " ")} · {encounter.origin} · {encounter.onsetDate}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${done ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{done ? "done" : "reading"}</span></div>;
+function IntakeAssessmentOverlay({ item, onClose }: { item: SeededConsultationLite; onClose: () => void }) {
+  const trace = item.assessment?.length ? item.assessment : item.interactions;
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-blue-50/70 p-5">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Assessment trace</p>
+            <h3 className="mt-1 text-xl font-black text-slate-950">{item.episodeId}</h3>
+            <p className="mt-1 text-sm text-slate-500">{item.sourcePortal ?? "Vinavi"} feed · {item.facility} · {item.diagnosis}</p>
+          </div>
+          <button onClick={onClose} className="rounded-2xl p-2 text-slate-400 hover:bg-white hover:text-slate-700 cursor-pointer"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="grid gap-3 p-5">
+          {trace.map((line, index) => (
+            <div key={`${line}-${index}`} className="flex gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-black text-white">{index + 1}</span>
+              <p className="text-sm leading-relaxed text-slate-700">{line}</p>
+            </div>
+          ))}
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-800">
+            <span className="font-black">Privacy note:</span> this screen shows an explainable assessment summary, not hidden chain-of-thought or patient identifiers.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function LiveOpenRouterProbe() {
