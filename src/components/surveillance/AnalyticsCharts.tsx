@@ -8,12 +8,11 @@ import {
   AreaChart, Area,
   PieChart, Pie, Cell,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  ScatterChart, Scatter, ZAxis,
   ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   Treemap,
 } from "recharts";
-import { X, Activity, Users, TrendingUp, Filter } from "lucide-react";
+import { Activity, CalendarDays, Check, ChevronDown, Filter, RotateCcw, Search, ShieldCheck } from "lucide-react";
 
 import {
   DISEASES,
@@ -27,16 +26,6 @@ import {
 } from "@/lib/surveillance-api";
 
 const PALETTE = ["#2563eb", "#dc2626", "#f59e0b", "#10b981", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#6366f1"];
-const APP_ICON = {
-  chart: "/icons/3d/chart.png",
-  target: "/icons/3d/target.png",
-  mapPin: "/icons/3d/map-pin.png",
-  radar: "/icons/3d/wifi.png",
-  file: "/icons/3d/file-text.png",
-  folder: "/icons/3d/folder.png",
-  patient: "/icons/3d/boy.png",
-  shield: "/icons/3d/shield.png",
-};
 const AXIS_TICK = { fontSize: 11, fill: "#64748b", fontWeight: 700 };
 const GRID_STROKE = "rgba(148, 163, 184, 0.22)";
 const TOOLTIP_STYLE = {
@@ -113,18 +102,45 @@ const CHARTS: ChartDef[] = [
 
 const GROUP_ORDER = ["Burden", "Demographics", "Clinical", "Geographic", "Laboratory", "Prevention"] as const;
 
-interface AnalyticsChartsProps {
-  onShowEncounters: (disease: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void;
+type DatePreset = "all" | "last7" | "last14" | "last30" | "custom";
+
+interface AnalyticsDateFilter {
+  preset: DatePreset;
+  start: string;
+  end: string;
 }
 
-export default function AnalyticsCharts({ onShowEncounters }: AnalyticsChartsProps) {
+const DATE_PRESETS: { value: DatePreset; label: string }[] = [
+  { value: "all", label: "All dates" },
+  { value: "last7", label: "7 days" },
+  { value: "last14", label: "14 days" },
+  { value: "last30", label: "30 days" },
+];
+
+const MENU_ICON = {
+  burden: "/logo-icon.png",
+  demographics: "/logo-icon.png",
+  clinical: "/logo-icon.png",
+  geographic: "/logo-icon.png",
+};
+
+const DEFAULT_DATE_FILTER: AnalyticsDateFilter = { preset: "all", start: "", end: "" };
+
+interface AnalyticsChartsProps {
+  onShowEncounters: (disease: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void;
+  disease: DiseaseCode | "all";
+  setDisease: (val: DiseaseCode | "all") => void;
+}
+
+export default function AnalyticsCharts({ onShowEncounters, disease, setDisease }: AnalyticsChartsProps) {
   const [active, setActive] = useState<ChartId>("weekly_trend");
-  const [disease, setDisease] = useState<DiseaseCode | "all">("all");
+  const [dateFilter, setDateFilter] = useState<AnalyticsDateFilter>(DEFAULT_DATE_FILTER);
   const [ready, setReady] = useState(false);
   useEffect(() => { requestAnimationFrame(() => setReady(true)); }, []);
 
   const chartDef = CHARTS.find((c) => c.id === active)!;
   const selectedDiseaseName = disease === "all" ? "All diseases" : DISEASE_BY_CODE[disease].name;
+  const filteredCount = useMemo(() => filterEncountersByDate(encountersFor(disease), dateFilter).length, [disease, dateFilter]);
   const notApplicableReason =
     chartDef.requiresDisease && disease === "all"
       ? "Select a specific disease above to view this chart."
@@ -161,18 +177,19 @@ export default function AnalyticsCharts({ onShowEncounters }: AnalyticsChartsPro
         <div className="analytics-title-block mb-4 rounded-3xl border border-white/80 bg-white/72 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_16px_36px_rgba(15,23,42,0.07)]">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="analytics-hero-icon"><img src={chartDef.group === "Geographic" ? APP_ICON.mapPin : chartDef.group === "Demographics" ? APP_ICON.patient : chartDef.group === "Clinical" ? APP_ICON.shield : APP_ICON.chart} alt="" /></div>
+              <div className="analytics-hero-icon analytics-logo-glyph"><img src={chartDef.group === "Geographic" ? MENU_ICON.geographic : chartDef.group === "Demographics" ? MENU_ICON.demographics : chartDef.group === "Clinical" ? MENU_ICON.clinical : MENU_ICON.burden} alt="" /></div>
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-wider text-blue-600">{chartDef.group} intelligence</p>
                 <h2 className="text-xl font-black text-slate-950 tracking-tight truncate">{chartDef.label}</h2>
                 <p className="text-xs text-slate-500">{selectedDiseaseName} · de-identified signal analytics</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               <DiseaseFilter disease={disease} onChange={setDisease} />
+              <DateFilterControl value={dateFilter} onChange={setDateFilter} />
               {disease !== "all" && (
                 <button
-                  onClick={() => onShowEncounters(disease, undefined, `${DISEASE_BY_CODE[disease].name} — All encounters`)}
+                  onClick={() => onShowEncounters(disease, dateFilterToEncounterFilter(dateFilter), `${DISEASE_BY_CODE[disease].name} — ${filteredCount.toLocaleString()} filtered encounters`)}
                   className="text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-2xl px-4 py-2 font-black transition-all duration-300 cursor-pointer shadow-[0_10px_22px_rgba(37,99,235,0.22)]"
                 >
                   View Patient Log
@@ -180,7 +197,6 @@ export default function AnalyticsCharts({ onShowEncounters }: AnalyticsChartsPro
               )}
             </div>
           </div>
-          <ChartInsightStrip disease={disease} chartDef={chartDef} />
         </div>
 
         {!ready ? (
@@ -192,7 +208,7 @@ export default function AnalyticsCharts({ onShowEncounters }: AnalyticsChartsPro
           </div>
         ) : (
           <div key={`${active}-${disease}`} className="flex-1 min-h-[360px] analytics-chart-frame animate-chartIn">
-            <ChartRenderer chartId={active} disease={disease} onShowEncounters={onShowEncounters} />
+            <ChartRenderer chartId={active} disease={disease} dateFilter={dateFilter} onShowEncounters={onShowEncounters} />
           </div>
         )}
       </div>
@@ -201,41 +217,147 @@ export default function AnalyticsCharts({ onShowEncounters }: AnalyticsChartsPro
 }
 
 function DiseaseFilter({ disease, onChange }: { disease: DiseaseCode | "all"; onChange: (value: DiseaseCode | "all") => void }) {
+  const [open, setOpen] = useState(false);
   const selected = disease === "all" ? null : DISEASE_BY_CODE[disease];
-  const icon = disease === "dengue" ? APP_ICON.target : disease === "all" ? APP_ICON.chart : selected?.category === "respiratory" ? APP_ICON.radar : APP_ICON.shield;
   return (
-    <label className="relative flex h-12 w-14 items-center justify-center rounded-2xl border border-white/80 bg-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_12px_26px_rgba(15,23,42,0.08)] cursor-pointer" title={selected?.name ?? "All diseases"}>
-      <img src={icon} alt="" className="h-10 w-10 object-contain drop-shadow-[0_10px_12px_rgba(15,23,42,0.18)]" />
-      <Filter className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-blue-600 p-0.5 text-white shadow-lg" />
-      <select value={disease} onChange={(e) => onChange(e.target.value as DiseaseCode | "all")} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Disease filter">
-        <option value="all">All diseases</option>
-        {DISEASES.map((d) => <option key={d.code} value={d.code}>{d.name}</option>)}
-      </select>
-    </label>
+    <div className="relative" title={selected?.name ?? "All diseases"}>
+      <button onClick={() => setOpen((value) => !value)} className="analytics-filter-pill cursor-pointer text-left">
+        <span className="analytics-filter-button relative">
+          <ShieldCheck className="h-7 w-7 text-blue-600" />
+          <Filter className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-blue-600 p-0.5 text-white shadow-lg" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[9px] font-black uppercase tracking-wider text-blue-600">Diagnosis</span>
+          <span className="block w-44 truncate text-xs font-black text-slate-800">{selected?.name ?? "All diseases"}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="analytics-popover w-[420px]">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400">
+            <Search className="h-3.5 w-3.5" /> Diagnosis library
+          </div>
+          <div className="grid max-h-80 grid-cols-1 gap-1 overflow-y-auto p-2">
+            <button onClick={() => { onChange("all"); setOpen(false); }} className={`analytics-choice ${disease === "all" ? "is-selected" : ""}`}>
+              <span>All diseases</span>{disease === "all" && <Check className="h-4 w-4" />}
+            </button>
+            {DISEASES.map((item) => (
+              <button key={item.code} onClick={() => { onChange(item.code); setOpen(false); }} className={`analytics-choice ${disease === item.code ? "is-selected" : ""}`}>
+                <span><strong>{item.name}</strong><small>{item.icd10} - {item.category}</small></span>{disease === item.code && <Check className="h-4 w-4" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
-function ChartInsightStrip({ disease, chartDef }: { disease: DiseaseCode | "all"; chartDef: ChartDef }) {
-  const encounters = encountersFor(disease);
-  const critical = encounters.filter((item) => item.severity === "critical").length;
-  const foreign = encounters.filter((item) => item.origin === "foreign").length;
-  const active = encounters.filter((item) => item.outcome === "active").length;
-  const insights = [
-    { label: "Episodes", value: encounters.length.toLocaleString(), icon: APP_ICON.folder ?? APP_ICON.file, tone: "blue" },
-    { label: "Active", value: active.toLocaleString(), icon: APP_ICON.radar, tone: "cyan" },
-    { label: "Critical", value: critical.toLocaleString(), icon: APP_ICON.target, tone: "rose" },
-    { label: "Foreign", value: foreign.toLocaleString(), icon: APP_ICON.mapPin, tone: "violet" },
-  ];
+function DateFilterControl({ value, onChange }: { value: AnalyticsDateFilter; onChange: (value: AnalyticsDateFilter) => void }) {
+  const setPreset = (preset: DatePreset) => onChange({ ...value, preset, start: "", end: "" });
+  const setCustom = (part: "start" | "end", next: string) => onChange({ ...value, preset: "custom", [part]: next });
+
   return (
-    <div className="mt-4 grid grid-cols-2 xl:grid-cols-4 gap-2">
-      {insights.map((insight) => (
-        <div key={`${chartDef.id}-${insight.label}`} className={`analytics-insight-card analytics-insight-${insight.tone}`}>
-          <img src={insight.icon} alt="" />
-          <div><p>{insight.label}</p><strong>{insight.value}</strong></div>
+    <div className="analytics-date-filter">
+      <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-blue-600">
+        <CalendarDays className="h-3.5 w-3.5" /> Signal window
+      </div>
+      <div className="flex items-center gap-1 flex-wrap">
+        {DATE_PRESETS.map((preset) => (
+          <button
+            key={preset.value}
+            onClick={() => setPreset(preset.value)}
+            className={`rounded-full px-2.5 py-1 text-[10px] font-black transition-all cursor-pointer ${value.preset === preset.value ? "bg-blue-600 text-white shadow-[0_8px_16px_rgba(37,99,235,0.22)]" : "bg-white/70 text-slate-500 hover:text-slate-900"}`}
+          >
+            {preset.label}
+          </button>
+        ))}
+        <button onClick={() => onChange({ ...value, preset: "custom" })} className={`rounded-full px-2.5 py-1 text-[10px] font-black transition-all cursor-pointer ${value.preset === "custom" ? "bg-slate-950 text-white" : "bg-white/70 text-slate-500 hover:text-slate-900"}`}>Custom</button>
+        <button onClick={() => onChange(DEFAULT_DATE_FILTER)} className="rounded-full bg-white/70 p-1.5 text-slate-500 hover:text-slate-950 cursor-pointer" title="Reset date filter">
+          <RotateCcw className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {value.preset === "custom" && (
+        <div className="grid grid-cols-2 gap-2">
+          <label className="analytics-date-field"><span>From</span><input value={value.start} onChange={(event) => setCustom("start", event.target.value)} placeholder="2026-05-01" /></label>
+          <label className="analytics-date-field"><span>To</span><input value={value.end} onChange={(event) => setCustom("end", event.target.value)} placeholder="2026-05-20" /></label>
         </div>
-      ))}
+      )}
     </div>
   );
+}
+
+function dateFilterToBounds(filter: AnalyticsDateFilter) {
+  if (filter.preset === "all") return { start: "", end: "" };
+  if (filter.preset === "custom") return { start: filter.start, end: filter.end };
+  const latestDate = encountersFor("all").reduce((latest, encounter) => encounter.onsetDate > latest ? encounter.onsetDate : latest, "2026-05-20");
+  const latest = new Date(`${latestDate}T00:00:00Z`);
+  const days = filter.preset === "last7" ? 7 : filter.preset === "last14" ? 14 : 30;
+  const start = new Date(latest.getTime() - (days - 1) * 86400000);
+  return { start: start.toISOString().slice(0, 10), end: latest.toISOString().slice(0, 10) };
+}
+
+function dateFilterToEncounterFilter(filter: AnalyticsDateFilter): Partial<PatientEncounter> | undefined {
+  const bounds = dateFilterToBounds(filter);
+  if (!bounds.start && !bounds.end) return undefined;
+  return { onsetDate: `${bounds.start || "..."}|${bounds.end || "..."}` } as Partial<PatientEncounter>;
+}
+
+function isDateInBounds(date: string, filter: AnalyticsDateFilter) {
+  const bounds = dateFilterToBounds(filter);
+  if (bounds.start && date < bounds.start) return false;
+  if (bounds.end && date > bounds.end) return false;
+  return true;
+}
+
+function filterEncountersByDate(list: PatientEncounter[], filter: AnalyticsDateFilter) {
+  return list.filter((encounter) => isDateInBounds(encounter.onsetDate, filter));
+}
+
+function filterWeeklyRows<T extends { week: string }>(rows: T[], filter: AnalyticsDateFilter) {
+  const filtered = rows.filter((row) => isDateInBounds(weekToDate(row.week), filter));
+  return filtered.length > 0 ? filtered : rows;
+}
+
+function weekToDate(week: string) {
+  const weekNumber = Number(week.replace("W", ""));
+  const date = new Date(Date.UTC(2026, 0, 1 + Math.max(0, weekNumber - 1) * 7));
+  return date.toISOString().slice(0, 10);
+}
+
+function dateRangeDays(filter: AnalyticsDateFilter) {
+  const bounds = dateFilterToBounds(filter);
+  if (!bounds.start || !bounds.end) return [];
+  const start = new Date(`${bounds.start}T00:00:00Z`);
+  const end = new Date(`${bounds.end}T00:00:00Z`);
+  const days: string[] = [];
+  for (let cursor = start.getTime(); cursor <= end.getTime() && days.length < 45; cursor += 86400000) {
+    days.push(new Date(cursor).toISOString().slice(0, 10));
+  }
+  return days;
+}
+
+function buildDailyDiseaseRows(filter: AnalyticsDateFilter) {
+  const days = dateRangeDays(filter);
+  if (days.length === 0) return [];
+  const encounters = filterEncountersByDate(encountersFor("all"), filter);
+  return days.map((date) => {
+    const row: { date: string; day: string } & Record<string, number | string> = { date, day: date.slice(5) };
+    for (const disease of DISEASES.slice(0, 10)) {
+      row[disease.name] = encounters.filter((encounter) => encounter.onsetDate === date && encounter.diseaseCode === disease.code).length;
+    }
+    return row;
+  });
+}
+
+function buildDailyCaseRows(disease: DiseaseCode, filter: AnalyticsDateFilter) {
+  const days = dateRangeDays(filter);
+  if (days.length === 0) return [];
+  const encounters = filterEncountersByDate(encountersFor(disease), filter);
+  return days.map((date) => {
+    const cases = encounters.filter((encounter) => encounter.onsetDate === date).length;
+    return { date, day: date.slice(5), cases, newCases: cases };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -244,22 +366,42 @@ function ChartInsightStrip({ disease, chartDef }: { disease: DiseaseCode | "all"
 function ChartRenderer({
   chartId,
   disease,
+  dateFilter,
   onShowEncounters,
 }: {
   chartId: ChartId;
   disease: DiseaseCode | "all";
+  dateFilter: AnalyticsDateFilter;
   onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void;
 }) {
-  const encounters = useMemo(() => encountersFor(disease), [disease]);
+  const encounters = useMemo(() => filterEncountersByDate(encountersFor(disease), dateFilter), [disease, dateFilter]);
 
   if (chartId === "weekly_trend") {
-    const data = ["W14", "W15", "W16", "W17", "W18", "W19", "W20"].map((week, i) => {
-      const row: Record<string, number | string> = { week };
+    const dailyData = buildDailyDiseaseRows(dateFilter);
+    if (dailyData.length > 0) {
+      return (
+        <ResponsiveContainer width="100%" height="100%" minWidth={300}>
+          <BarChart data={dailyData} margin={{ top: 14, right: 18, bottom: 8, left: 8 }}>
+            <CartesianGrid strokeDasharray="4 8" stroke={GRID_STROKE} />
+            <XAxis dataKey="day" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(37,99,235,0.04)" }} />
+            <Legend wrapperStyle={{ fontSize: 10 }} />
+            {DISEASES.slice(0, 10).map((diseaseItem, index) => (
+              <Bar key={diseaseItem.code} dataKey={diseaseItem.name} stackId="daily" fill={PALETTE[index]} radius={index === 9 ? [8, 8, 0, 0] : [0, 0, 0, 0]} maxBarSize={44} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      );
+    }
+
+    const data = filterWeeklyRows(["W14", "W15", "W16", "W17", "W18", "W19", "W20"].map((week, i) => {
+      const row: { week: string } & Record<string, number | string> = { week };
       for (const d of DISEASES) {
         row[d.name] = weeklySeriesFor(d.code)[i].cases;
       }
       return row;
-    });
+    }), dateFilter);
     return (
       <ResponsiveContainer width="100%" height="100%" minWidth={300}>
         <AreaChart data={data}>
@@ -277,12 +419,13 @@ function ChartRenderer({
   }
 
   if (chartId === "incidence") {
-    const data = weeklySeriesFor(disease as DiseaseCode);
-    return <SimpleBar data={data} xKey="week" bars={[{ key: "cases", color: "#2563eb", name: "Cases" }, { key: "newCases", color: "#dc2626", name: "New" }]} />;
+    const dailyData = buildDailyCaseRows(disease as DiseaseCode, dateFilter);
+    const data = dailyData.length > 0 ? dailyData : filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
+    return <SimpleBar data={data} xKey={dailyData.length > 0 ? "day" : "week"} bars={[{ key: "cases", color: "#2563eb", name: "Cases" }, { key: "newCases", color: "#dc2626", name: "New" }]} />;
   }
 
   if (chartId === "epi_curve") {
-    const data = weeklySeriesFor(disease as DiseaseCode);
+    const data = filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
     return (
       <ResponsiveContainer width="100%" height="100%" minWidth={300}>
         <AreaChart data={data}>
@@ -297,7 +440,7 @@ function ChartRenderer({
   }
 
   if (chartId === "rt") {
-    const data = weeklySeriesFor(disease as DiseaseCode);
+    const data = filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
     return (
       <ResponsiveContainer width="100%" height="100%" minWidth={300}>
         <LineChart data={data}>
@@ -313,14 +456,17 @@ function ChartRenderer({
   }
 
   if (chartId === "doubling") {
-    const data = weeklySeriesFor(disease as DiseaseCode);
+    const data = filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
     return <SimpleBar data={data} xKey="week" bars={[{ key: "doublingDays", color: "#f59e0b", name: "Doubling Time (days)" }]} />;
   }
 
   if (chartId === "cumulative") {
-    const data = weeklySeriesFor(disease as DiseaseCode);
-    let cum = 0;
-    const cumulated = data.map((d) => { cum += d.cases; return { ...d, cumulative: cum }; });
+    const data = filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
+    const cumulated = data.reduce<Array<(typeof data)[number] & { cumulative: number }>>((rows, point) => {
+      const previous = rows.at(-1)?.cumulative ?? 0;
+      rows.push({ ...point, cumulative: previous + point.cases });
+      return rows;
+    }, []);
     return (
       <ResponsiveContainer width="100%" height="100%" minWidth={300}>
         <LineChart data={cumulated}>
@@ -335,7 +481,7 @@ function ChartRenderer({
   }
 
   if (chartId === "new_vs_recoveries") {
-    const data = weeklySeriesFor(disease as DiseaseCode);
+    const data = filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
     return (
       <ResponsiveContainer width="100%" height="100%" minWidth={300}>
         <ComposedChart data={data}>
@@ -596,7 +742,7 @@ function ChartRenderer({
   }
 
   if (chartId === "test_positivity") {
-    const data = weeklySeriesFor(disease as DiseaseCode);
+    const data = filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
     return (
       <ResponsiveContainer width="100%" height="100%" minWidth={300}>
         <LineChart data={data}>
@@ -611,7 +757,7 @@ function ChartRenderer({
   }
 
   if (chartId === "test_volume") {
-    const data = weeklySeriesFor(disease as DiseaseCode);
+    const data = filterWeeklyRows(weeklySeriesFor(disease as DiseaseCode), dateFilter);
     return <SimpleBar data={data} xKey="week" bars={[{ key: "testsRun", color: "#2563eb", name: "Tests Run" }]} />;
   }
 
@@ -685,6 +831,43 @@ function SimpleBar({
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={300}>
       <BarChart data={data} layout={layout ?? "horizontal"} margin={{ top: 14, right: 18, bottom: 8, left: 8 }}>
+        <defs>
+          <filter id="premium-shadow" x="-10%" y="-10%" width="120%" height="120%">
+            <feDropShadow dx="0" dy="8" stdDeviation="6" floodColor="#0f172a" floodOpacity="0.08" />
+          </filter>
+          <linearGradient id="bar-blue" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" />
+            <stop offset="100%" stopColor="#1d4ed8" />
+          </linearGradient>
+          <linearGradient id="bar-red" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f43f5e" />
+            <stop offset="100%" stopColor="#be123c" />
+          </linearGradient>
+          <linearGradient id="bar-amber" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fbbf24" />
+            <stop offset="100%" stopColor="#d97706" />
+          </linearGradient>
+          <linearGradient id="bar-emerald" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#34d399" />
+            <stop offset="100%" stopColor="#059669" />
+          </linearGradient>
+          <linearGradient id="bar-violet" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#a78bfa" />
+            <stop offset="100%" stopColor="#6d28d9" />
+          </linearGradient>
+          <linearGradient id="bar-cyan" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#22d3ee" />
+            <stop offset="100%" stopColor="#0891b2" />
+          </linearGradient>
+          <linearGradient id="bar-orange" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fb923c" />
+            <stop offset="100%" stopColor="#ca8a04" />
+          </linearGradient>
+          <linearGradient id="bar-slate" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#94a3b8" />
+            <stop offset="100%" stopColor="#475569" />
+          </linearGradient>
+        </defs>
         <CartesianGrid strokeDasharray="4 8" stroke={GRID_STROKE} vertical={layout !== "vertical"} horizontal={layout !== "horizontal"} />
         {layout === "vertical" ? (
           <>
@@ -697,11 +880,31 @@ function SimpleBar({
             <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} />
           </>
         )}
-        <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(37, 99, 235, 0.06)" }} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(37, 99, 235, 0.04)" }} />
         <Legend wrapperStyle={{ fontSize: 11 }} />
-        {bars.map((b) => (
-          <Bar key={b.key} dataKey={b.key} fill={b.color} radius={layout === "vertical" ? [0, 12, 12, 0] : [12, 12, 0, 0]} name={b.name} />
-        ))}
+        {bars.map((b) => {
+          let fillVal = b.color;
+          if (b.color === "#2563eb") fillVal = "url(#bar-blue)";
+          else if (b.color === "#dc2626") fillVal = "url(#bar-red)";
+          else if (b.color === "#f59e0b") fillVal = "url(#bar-amber)";
+          else if (b.color === "#10b981") fillVal = "url(#bar-emerald)";
+          else if (b.color === "#8b5cf6") fillVal = "url(#bar-violet)";
+          else if (b.color === "#06b6d4") fillVal = "url(#bar-cyan)";
+          else if (b.color === "#f97316") fillVal = "url(#bar-orange)";
+          else fillVal = b.color;
+
+          return (
+            <Bar
+              key={b.key}
+              dataKey={b.key}
+              fill={fillVal}
+              filter="url(#premium-shadow)"
+              radius={layout === "vertical" ? [0, 10, 10, 0] : [10, 10, 0, 0]}
+              name={b.name}
+              maxBarSize={48}
+            />
+          );
+        })}
       </BarChart>
     </ResponsiveContainer>
   );

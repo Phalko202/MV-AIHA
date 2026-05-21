@@ -113,25 +113,25 @@ export const FACILITIES: FacilityStatus[] = [
   }),
   facility({
     id: "treetop", name: "Tree Top Hospital", shortName: "TREE", type: "tertiary",
-    lat: 4.2121861, lng: 73.5390001, atoll: "Kaafu", island: "Hulhumale",
+    lat: 4.2120, lng: 73.5435, atoll: "Kaafu", island: "Hulhumale",
     alerts: [],
     conditions: [condition("ili", 15, "stable", 5), condition("febrile_seizure", 12, "down", 1), condition("chest_pain", 8, "stable", 1), condition("pneumonia", 8, "stable", 3)],
   }),
   facility({
     id: "hulhumale", name: "Hulhumale Hospital", shortName: "HMH", type: "regional",
-    lat: 4.2157496, lng: 73.5431481, atoll: "Kaafu", island: "Hulhumale",
+    lat: 4.2157, lng: 73.5445, atoll: "Kaafu", island: "Hulhumale",
     alerts: ["Dengue daily count above critical threshold", "Foreign-patient dengue cluster under review", "ILI trend rising for three consecutive uploads"],
     conditions: [condition("ili", 38, "up", 18), condition("dengue", 28, "up", 23), condition("gastro", 15, "up", 8), condition("pneumonia", 8, "up", 4)],
   }),
   facility({
     id: "hulhumale_gp2", name: "Hulhumale GP Clinic - Phase 2", shortName: "HGP2", type: "clinic",
-    lat: 4.2245, lng: 73.5375, atoll: "Kaafu", island: "Hulhumale Phase 2, Neighbourhood 3",
+    lat: 4.2312, lng: 73.5435, atoll: "Kaafu", island: "Hulhumale Phase 2, Neighbourhood 3",
     alerts: ["GP walk-in registry shows dengue increase among foreign workers"],
     conditions: [condition("dengue", 21, "up", 16), condition("ili", 19, "up", 9), condition("gastro", 8, "stable", 2), condition("hfmd", 7, "up", 1)],
   }),
   facility({
     id: "vilingili_hc", name: "Vilingili Health Centre", shortName: "VHC", type: "clinic",
-    lat: 4.1773, lng: 73.4869, atoll: "Kaafu", island: "Villingili",
+    lat: 4.1741, lng: 73.4848, atoll: "Kaafu", island: "Villingili",
     alerts: [],
     conditions: [condition("dengue", 5, "stable", 1), condition("gastro", 4, "down", 1)],
   }),
@@ -173,7 +173,7 @@ export const FACILITIES: FacilityStatus[] = [
   }),
   facility({
     id: "muli", name: "Muli Regional Hospital", shortName: "MRH", type: "regional",
-    lat: 2.9163, lng: 73.5757, atoll: "Meemu", island: "Muli",
+    lat: 2.9215, lng: 73.5815, atoll: "Meemu", island: "Muli",
     alerts: [],
     conditions: [condition("ili", 3, "stable", 1), condition("gastro", 2, "stable", 0), condition("dengue", 1, "stable", 0)],
   }),

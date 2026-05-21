@@ -9,6 +9,7 @@ import {
   Building2,
   Calendar,
   Clock3,
+  Database,
   FileHeart,
   MapPin,
   Search,
@@ -19,6 +20,7 @@ import { MOCK_PATIENTS, searchPatients, type Patient } from "@/lib/mock-data";
 import { log } from "@/lib/logger";
 
 const NETWORK_URL = `${process.env.NEXT_PUBLIC_SURVEILLANCE_URL ?? "http://localhost:3000"}/network`;
+const SURVEILLANCE_API_URL = `${process.env.NEXT_PUBLIC_SURVEILLANCE_URL ?? "http://localhost:3000"}/api/seed-consultations`;
 
 function VinaviSearchContent() {
   const router = useRouter();
@@ -27,6 +29,8 @@ function VinaviSearchContent() {
   const [results, setResults] = useState<Patient[]>([]);
   const [searched, setSearched] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [seedAmount, setSeedAmount] = useState("100");
+  const [seedStatus, setSeedStatus] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -84,6 +88,24 @@ function VinaviSearchContent() {
   const handleSelectPatient = (patient: Patient) => {
     log("PATIENT_SELECT", "VinaviSearch", { patientId: patient.id, name: patient.name });
     router.push(`/vinavi/${patient.id}`);
+  };
+
+  const handleSeedConsultations = async () => {
+    const amount = Math.max(1, Math.min(5000, Number(seedAmount) || 100));
+    setSeedStatus("Sending consultation batch to surveillance intake...");
+    try {
+      const response = await fetch(SURVEILLANCE_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      setSeedStatus(`${payload.accepted.toLocaleString()} consultations seeded across 100 rotating patient profiles.`);
+      log("CONSULTATION_SEED", "VinaviSearch", { amount: payload.accepted, totalQueued: payload.totalQueued });
+    } catch (error) {
+      setSeedStatus(`Seed failed: ${error instanceof Error ? error.message : "surveillance API unavailable"}`);
+    }
   };
 
   return (
@@ -193,6 +215,30 @@ function VinaviSearchContent() {
                     Vinavi stays focused on consultation history, prescriptions, services, vitals, and
                     clinical documentation. Epidemiology tooling remains in the surveillance portal.
                   </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[28px] border border-sky-200 bg-sky-50 p-4">
+              <div className="flex items-start gap-3">
+                <Database className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-sky-950">Seed surveillance consultations</p>
+                  <p className="mt-1 text-sm leading-6 text-sky-900/75">
+                    Send a scalable consultation batch to the surveillance intake queue for AI reading and episode processing.
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      value={seedAmount}
+                      onChange={(event) => setSeedAmount(event.target.value.replace(/[^0-9]/g, "").slice(0, 4))}
+                      className="min-w-0 flex-1 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-sky-400"
+                      placeholder="100"
+                    />
+                    <button onClick={handleSeedConsultations} className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-sky-500">
+                      Seed
+                    </button>
+                  </div>
+                  {seedStatus && <p className="mt-2 text-xs font-semibold text-sky-800">{seedStatus}</p>}
                 </div>
               </div>
             </div>
