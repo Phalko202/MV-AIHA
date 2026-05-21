@@ -9,6 +9,8 @@ import {
   UploadCloud, UserRound, Users, UsersRound, X,
   Thermometer, Bug, GlassWater, Flame, Brain, HeartPulse, Droplet, Dna,
 } from "lucide-react";
+import { Brain as PhosphorBrain, FirstAidKit, GitBranch, Robot } from "@phosphor-icons/react";
+import { motion } from "framer-motion";
 
 import {
   DISEASES, DISEASE_BY_CODE, FACILITIES, IMPORTED_FOREIGN_ROWS, OUTBREAK_CLUSTERS,
@@ -679,6 +681,21 @@ interface SeededConsultationLite {
   facility: string;
   createdAt: string;
   status: "queued" | "reading" | "done";
+  stage: "intake" | "clinical-read" | "reasoning" | "research" | "promotion";
+  assignedAgent: "MedGemma" | "DeepSeek" | "Research RAG" | "MV-AIHA Router";
+  priority: "routine" | "watch" | "urgent";
+  confidence: number;
+  progress: number;
+  interactions: string[];
+}
+
+interface SeededQueueSummary {
+  totalQueued: number;
+  visible: number;
+  reading: number;
+  done: number;
+  urgent: number;
+  agents: { agent: string; count: number }[];
 }
 
 function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void }) {
@@ -687,12 +704,14 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
   const [scope, setScope] = useState<IntakeScope>("24h");
   const [manualNote, setManualNote] = useState("possible workplace dengue exposure; review foreign-worker cluster logic before public alert");
   const [seeded, setSeeded] = useState<SeededConsultationLite[]>([]);
+  const [seedSummary, setSeedSummary] = useState<SeededQueueSummary | null>(null);
+  const [queueError, setQueueError] = useState<string | null>(null);
 
   const bots = useMemo(() => [
-    { name: "MedGemma clinical reader", icon: Stethoscope, task: "reads symptoms, vitals, prescriptions, and clinician notes", model: "medgemma-local" },
-    { name: "DeepSeek reasoning agent", icon: BrainCircuit, task: "checks inconsistencies, travel context, and manual judgement", model: "deepseek-r1" },
-    { name: "Epi research synthesizer", icon: Microscope, task: "matches guidance, citations, thresholds, and report evidence", model: "epidemiology-rag" },
-    { name: "MV-AIHA orchestrator", icon: Network, task: "batches high-load consultations without blocking the queue", model: "router" },
+    { name: "MedGemma clinical reader", icon: FirstAidKit, fallback: Stethoscope, task: "reads symptoms, vitals, prescriptions, and clinician notes", model: "medgemma-local" },
+    { name: "DeepSeek reasoning agent", icon: PhosphorBrain, fallback: BrainCircuit, task: "checks inconsistencies, travel context, and manual judgement", model: "deepseek-r1" },
+    { name: "Epi research synthesizer", icon: Robot, fallback: Microscope, task: "matches guidance, citations, thresholds, and report evidence", model: "epidemiology-rag" },
+    { name: "MV-AIHA orchestrator", icon: GitBranch, fallback: Network, task: "batches high-load consultations without blocking the queue", model: "router" },
   ], []);
 
   const baseQueue = useMemo(() => encountersFor("all").slice(0, 18), []);
@@ -706,12 +725,29 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
   const queueSize = filteredBaseQueue.length + visibleSeeded.length;
   const completed = Math.min(queueSize, step + Math.floor(queueSize * 0.38));
 
+  const loadSeededQueue = () => {
+    fetch("/api/seed-consultations", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error(`HTTP ${response.status}`)))
+      .then((payload) => {
+        setSeeded((payload.consultations ?? []) as SeededConsultationLite[]);
+        setSeedSummary((payload.summary ?? null) as SeededQueueSummary | null);
+        setQueueError(null);
+      })
+      .catch((error) => {
+        setQueueError(error instanceof Error ? error.message : "Seed queue unavailable");
+        setSeeded([]);
+      });
+  };
+
   useEffect(() => {
-    fetch("/api/seed-consultations")
-      .then((response) => response.ok ? response.json() : { consultations: [] })
-      .then((payload) => setSeeded((payload.consultations ?? []) as SeededConsultationLite[]))
-      .catch(() => setSeeded([]));
+    loadSeededQueue();
   }, []);
+
+  useEffect(() => {
+    if (!running) return undefined;
+    const id = setInterval(loadSeededQueue, 4500);
+    return () => clearInterval(id);
+  }, [running]);
 
   useEffect(() => {
     if (!running) return undefined;
@@ -733,16 +769,20 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
         <Panel className="p-5">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <div><p className="text-sm font-black text-slate-800">Agentic episode processing</p><p className="text-xs text-slate-500">Batching 100s of consultations per hour through staged AI readers</p></div>
-            <div className="flex flex-wrap gap-1 rounded-2xl border border-white/80 bg-white/70 p-1">
-              {(["24h", "seeded", "critical", "foreign"] as IntakeScope[]).map((item) => <button key={item} onClick={() => setScope(item)} className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${scope === item ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-950"}`}>{item}</button>)}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={loadSeededQueue} className="inline-flex items-center gap-2 rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-[10px] font-black text-slate-600 hover:text-slate-950 cursor-pointer"><RefreshCw className="h-3.5 w-3.5" />Sync API</button>
+              <div className="flex flex-wrap gap-1 rounded-2xl border border-white/80 bg-white/70 p-1">
+                {(["24h", "seeded", "critical", "foreign"] as IntakeScope[]).map((item) => <button key={item} onClick={() => setScope(item)} className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase cursor-pointer ${scope === item ? "bg-blue-600 text-white" : "text-slate-500 hover:text-slate-950"}`}>{item}</button>)}
+              </div>
             </div>
           </div>
+          {queueError && <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">Seed queue API fallback active: {queueError}</div>}
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-4">
             {bots.map((bot, index) => {
               const Icon = bot.icon;
               const active = index === step % bots.length;
-              return <div key={bot.name} className={`rounded-3xl border p-4 transition-all ${active ? "bg-blue-50 border-blue-200 shadow-[0_18px_38px_rgba(37,99,235,0.14)]" : "bg-white/70 border-slate-100"}`}><div className="flex items-center gap-2"><Icon className={`h-5 w-5 ${active ? "text-blue-600" : "text-slate-400"}`} /><span className="text-[10px] font-black uppercase text-slate-400">{bot.model}</span></div><p className="mt-2 text-sm font-black text-slate-900">{bot.name}</p><p className="mt-1 text-xs leading-relaxed text-slate-500">{bot.task}</p></div>;
+              return <motion.div key={bot.name} animate={{ y: active ? -3 : 0, scale: active ? 1.015 : 1 }} transition={{ type: "spring", stiffness: 260, damping: 22 }} className={`rounded-3xl border p-4 transition-all ${active ? "bg-blue-50 border-blue-200 shadow-[0_18px_38px_rgba(37,99,235,0.14)]" : "bg-white/70 border-slate-100"}`}><div className="flex items-center gap-2"><Icon weight="duotone" className={`h-7 w-7 ${active ? "text-blue-600" : "text-slate-400"}`} /><span className="text-[10px] font-black uppercase text-slate-400">{bot.model}</span></div><p className="mt-2 text-sm font-black text-slate-900">{bot.name}</p><p className="mt-1 text-xs leading-relaxed text-slate-500">{bot.task}</p></motion.div>;
             })}
           </div>
 
@@ -755,7 +795,14 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
         <div className="space-y-4">
           <StatCard label="Queue size" value={queueSize.toLocaleString()} icon={ClipboardList} tone="blue" sub="Visible filtered workload" />
           <StatCard label="Done this cycle" value={completed.toLocaleString()} icon={ClipboardCheck} tone="emerald" sub="Marked after bot review" />
-          <StatCard label="Seeded from Vinavi" value={seeded.length.toLocaleString()} icon={Database} tone="amber" sub="API-backed consultation load" />
+          <StatCard label="Seeded from Vinavi" value={(seedSummary?.totalQueued ?? seeded.length).toLocaleString()} icon={Database} tone="amber" sub="API-backed consultation load" />
+          <Panel className="p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Queue distribution</p>
+            <div className="mt-3 grid gap-2">
+              {(seedSummary?.agents ?? []).map((row) => <div key={row.agent} className="flex items-center justify-between rounded-xl bg-white/70 px-3 py-2 text-xs"><span className="font-black text-slate-600">{row.agent}</span><span className="font-mono font-black text-blue-700">{row.count}</span></div>)}
+              {!seedSummary && <p className="text-xs text-slate-500">Seed from Vinavi to populate the API queue.</p>}
+            </div>
+          </Panel>
           <button onClick={() => onShowEncounters("all", undefined, "Fetched surveillance episodes - all sources")} className="w-full rounded-2xl bg-slate-950 text-white px-4 py-4 text-sm font-black hover:bg-slate-800 cursor-pointer shadow-xl">Open fetched encounter log</button>
         </div>
       </div>
@@ -778,7 +825,24 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
 }
 
 function IntakeSeedRow({ item, done }: { item: SeededConsultationLite; done: boolean }) {
-  return <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white/75 px-4 py-3"><span className={`h-9 w-9 rounded-2xl flex items-center justify-center text-xs font-black ${done ? "bg-emerald-500 text-white" : "bg-blue-100 text-blue-700"}`}>{done ? "OK" : "AI"}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-800">{item.episodeId} · {item.diagnosis}</p><p className="text-[11px] text-slate-500">{item.patientId} · {item.facility} · {new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p></div><span className="text-[10px] font-black uppercase text-slate-400">{item.status}</span></div>;
+  return (
+    <motion.div layout className="rounded-2xl border border-slate-100 bg-white/80 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center gap-3">
+        <span className={`h-10 w-10 rounded-2xl flex items-center justify-center text-xs font-black ${done ? "bg-emerald-500 text-white" : item.priority === "urgent" ? "bg-rose-100 text-rose-700" : "bg-blue-100 text-blue-700"}`}>{done ? "OK" : "AI"}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-black text-slate-800">{item.episodeId} · {item.diagnosis}</p>
+          <p className="text-[11px] text-slate-500">{item.patientId} · {item.facility} · {item.assignedAgent} · {item.stage.replace("-", " ")}</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${item.priority === "urgent" ? "bg-rose-50 text-rose-700" : item.priority === "watch" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-500"}`}>{item.priority}</span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-cyan-400" style={{ width: `${Math.min(100, Math.max(4, item.progress))}%` }} />
+      </div>
+      <div className="mt-3 grid gap-1">
+        {item.interactions.slice(0, 3).map((interaction) => <p key={interaction} className="text-[11px] font-semibold text-slate-500">- {interaction}</p>)}
+      </div>
+    </motion.div>
+  );
 }
 
 function IntakeEpisodeRow({ encounter, index, done }: { encounter: PatientEncounter; index: number; done: boolean }) {

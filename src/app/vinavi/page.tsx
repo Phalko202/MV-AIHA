@@ -19,8 +19,9 @@ import {
 import { MOCK_PATIENTS, searchPatients, type Patient } from "@/lib/mock-data";
 import { log } from "@/lib/logger";
 
-const NETWORK_URL = `${process.env.NEXT_PUBLIC_SURVEILLANCE_URL ?? "http://localhost:3000"}/network`;
-const SURVEILLANCE_API_URL = `${process.env.NEXT_PUBLIC_SURVEILLANCE_URL ?? "http://localhost:3000"}/api/seed-consultations`;
+const SURVEILLANCE_ORIGIN = process.env.NEXT_PUBLIC_SURVEILLANCE_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "");
+const NETWORK_URL = `${SURVEILLANCE_ORIGIN}/network`;
+const SURVEILLANCE_API_URL = `${SURVEILLANCE_ORIGIN}/api/seed-consultations`;
 
 function VinaviSearchContent() {
   const router = useRouter();
