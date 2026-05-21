@@ -77,7 +77,7 @@ The redactor returns an audit record containing the list of removed field names,
 
 ### What we keep
 
-Only the **de-identified clinical signal** required for triage leaves the perimeter:
+Only the **de-identified clinical signal** required for research leaves the perimeter:
 
 - `ageYears` (integer)
 - `gender`
