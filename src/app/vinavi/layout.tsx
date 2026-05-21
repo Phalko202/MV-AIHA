@@ -83,8 +83,8 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#f5f7fb] text-slate-900 flex">
-      <aside className="hidden lg:flex lg:w-[288px] shrink-0 flex-col border-r border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.06)]">
+    <div className="h-screen w-screen overflow-hidden bg-[#f3f3f3] text-slate-900 flex flex-col">
+      <aside className="hidden">
         <div className="border-b border-slate-200 px-6 py-6">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-[0_12px_24px_rgba(239,68,68,0.28)]">
@@ -143,12 +143,18 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="shrink-0 border-b border-slate-200 bg-white/90 px-4 py-4 backdrop-blur-xl sm:px-6">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="relative min-w-0 flex-1 lg:max-w-2xl">
-              <div className="flex items-center rounded-2xl border border-slate-200 bg-[#f8fafc] px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] focus-within:border-rose-300 focus-within:bg-white focus-within:shadow-[0_12px_30px_rgba(244,63,94,0.08)]">
-                <Search className="h-4.5 w-4.5 shrink-0 text-slate-400" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <header className="shrink-0 bg-[#e34234] px-4 py-2 text-white shadow-[0_2px_10px_rgba(0,0,0,0.22)]">
+          <div className="flex items-center gap-4">
+            <button className="rounded p-2 text-white/95 hover:bg-white/10" aria-label="Menu">
+              <span className="block h-0.5 w-5 bg-white" />
+              <span className="mt-1 block h-0.5 w-5 bg-white" />
+              <span className="mt-1 block h-0.5 w-5 bg-white" />
+            </button>
+            <button onClick={() => router.push("/vinavi")} className="text-xl font-semibold text-white">Vinavi</button>
+            <div className="relative min-w-0 flex-1">
+              <div className="flex h-10 items-center bg-white/16 px-4 focus-within:bg-white/22">
+                <Search className="h-4.5 w-4.5 shrink-0 text-white" />
                 <input
                   type="text"
                   value={query}
@@ -158,12 +164,12 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
                       handleSearchSubmit();
                     }
                   }}
-                  placeholder="Search patient by name, ID, or national ID"
-                  className="w-full bg-transparent px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                  placeholder="Patient Search"
+                  className="w-full bg-transparent px-3 py-2 text-sm text-white outline-none placeholder:text-white/85"
                 />
                 <button
                   onClick={handleSearchSubmit}
-                  className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-rose-500"
+                  className="hidden"
                 >
                   Search
                 </button>
@@ -189,20 +195,18 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
               )}
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 sm:flex sm:items-center sm:gap-2">
-                <Activity className="h-4 w-4" />
-                Government clinical system online
+            <div className="ml-auto flex shrink-0 items-center gap-4 text-right">
+              <div>
+                <p className="text-sm font-semibold leading-tight">Muhammad Mujtaba Ur Rehman</p>
+                <p className="text-xs font-semibold leading-tight text-white/80">Hulhumale' Hospital</p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-right shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Today</p>
-                <p className="text-sm font-semibold text-slate-700">{dateLabel || "Government EMR"}</p>
-              </div>
+              <Activity className="h-5 w-5 text-white" />
+              <ShieldCheck className="h-5 w-5 text-white" />
             </div>
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.08),transparent_30%),linear-gradient(180deg,#f8fafc_0%,#f4f6fb_100%)]">
+        <main className="min-h-0 flex-1 overflow-auto bg-[#f5f5f5]">
           {children}
         </main>
       </div>

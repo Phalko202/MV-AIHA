@@ -5,11 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   ArrowRight,
-  ArrowUpRight,
   Building2,
   Calendar,
   Clock3,
-  Database,
   FileHeart,
   MapPin,
   Search,
@@ -20,8 +18,6 @@ import { MOCK_PATIENTS, searchPatients, type Patient } from "@/lib/mock-data";
 import { log } from "@/lib/logger";
 
 const SURVEILLANCE_ORIGIN = process.env.NEXT_PUBLIC_SURVEILLANCE_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "");
-const NETWORK_URL = `${SURVEILLANCE_ORIGIN}/network`;
-const SURVEILLANCE_API_URL = `${SURVEILLANCE_ORIGIN}/api/seed-consultations`;
 
 function VinaviSearchContent() {
   const router = useRouter();
@@ -30,8 +26,6 @@ function VinaviSearchContent() {
   const [results, setResults] = useState<Patient[]>([]);
   const [searched, setSearched] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [seedAmount, setSeedAmount] = useState("100");
-  const [seedStatus, setSeedStatus] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -91,29 +85,11 @@ function VinaviSearchContent() {
     router.push(`/vinavi/${patient.id}`);
   };
 
-  const handleSeedConsultations = async () => {
-    const amount = Math.max(1, Math.min(5000, Number(seedAmount) || 100));
-    setSeedStatus("Sending consultation batch to surveillance intake...");
-    try {
-      const response = await fetch(SURVEILLANCE_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount }),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
-      setSeedStatus(`${payload.accepted.toLocaleString()} consultations seeded across 100 rotating patient profiles.`);
-      log("CONSULTATION_SEED", "VinaviSearch", { amount: payload.accepted, totalQueued: payload.totalQueued });
-    } catch (error) {
-      setSeedStatus(`Seed failed: ${error instanceof Error ? error.message : "surveillance API unavailable"}`);
-    }
-  };
-
   return (
     <div className="min-h-full px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="grid gap-6 xl:grid-cols-[1.5fr_0.95fr]">
-          <div className="rounded-[32px] border border-slate-200 bg-white px-6 py-7 shadow-[0_32px_70px_rgba(15,23,42,0.06)] sm:px-8">
+        <section className="grid gap-6 xl:grid-cols-[1.55fr_0.9fr]">
+          <div className="rounded-[18px] border border-slate-200 bg-white px-6 py-7 shadow-[0_18px_42px_rgba(15,23,42,0.08)] sm:px-8">
             <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-rose-500">
@@ -127,7 +103,7 @@ function VinaviSearchContent() {
                   documentation in the government EMR environment.
                 </p>
               </div>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-right">
+              <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-right">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">
                   Access State
                 </p>
@@ -135,12 +111,12 @@ function VinaviSearchContent() {
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-rose-100 bg-[linear-gradient(180deg,#fff8f8_0%,#ffffff_100%)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:p-5">
+            <div className="rounded border border-slate-200 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:p-5">
               <label className="mb-3 block text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
                 Patient Search
               </label>
               <div className="flex flex-col gap-3 lg:flex-row">
-                <div className="flex flex-1 items-center rounded-2xl border border-slate-200 bg-white px-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] focus-within:border-rose-300">
+                <div className="flex flex-1 items-center rounded border border-slate-200 bg-white px-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] focus-within:border-rose-300">
                   <Search className="h-5 w-5 shrink-0 text-rose-500" />
                   <input
                     type="text"
@@ -157,7 +133,7 @@ function VinaviSearchContent() {
                 </div>
                 <button
                   onClick={() => handleSearch()}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-rose-600 px-6 py-4 text-sm font-semibold text-white transition-colors hover:bg-rose-500"
+                  className="inline-flex items-center justify-center gap-2 rounded bg-[#e34234] px-6 py-4 text-sm font-semibold text-white transition-colors hover:bg-[#cf3529]"
                 >
                   <Search className="h-4.5 w-4.5" />
                   Search Records
@@ -183,29 +159,21 @@ function VinaviSearchContent() {
             </div>
           </div>
 
-          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_32px_70px_rgba(15,23,42,0.06)]">
+          <div className="rounded-[18px] border border-slate-200 bg-white p-6 shadow-[0_18px_42px_rgba(15,23,42,0.08)]">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
                 <Building2 className="h-6 w-6" />
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-500">
-                  Separate Portal
+                  API bridge
                 </p>
-                <h3 className="text-lg font-bold text-slate-900">Hospital Network Live Status</h3>
+                <h3 className="text-lg font-bold text-slate-900">Consultation sync only</h3>
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-500">
-              Operational hospital load, public-health monitoring, and AI outbreak surveillance now live
-              under the surveillance workspace instead of inside the patient record portal.
+              Vinavi stores clinical work here. Completed consultation details are sent through the ingest API for surveillance review; no button here starts AI directly.
             </p>
-            <a
-              href={NETWORK_URL}
-              className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-100"
-            >
-              Open Hospital Network
-              <ArrowUpRight className="h-4 w-4" />
-            </a>
 
             <div className="mt-6 rounded-[28px] border border-amber-200 bg-amber-50 p-4">
               <div className="flex items-start gap-3">
@@ -216,30 +184,6 @@ function VinaviSearchContent() {
                     Vinavi stays focused on consultation history, prescriptions, services, vitals, and
                     clinical documentation. Epidemiology tooling remains in the surveillance portal.
                   </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-[28px] border border-sky-200 bg-sky-50 p-4">
-              <div className="flex items-start gap-3">
-                <Database className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-sky-950">Seed surveillance consultations</p>
-                  <p className="mt-1 text-sm leading-6 text-sky-900/75">
-                    Send a scalable consultation batch to the surveillance intake queue for AI reading and episode processing.
-                  </p>
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      value={seedAmount}
-                      onChange={(event) => setSeedAmount(event.target.value.replace(/[^0-9]/g, "").slice(0, 4))}
-                      className="min-w-0 flex-1 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-sky-400"
-                      placeholder="100"
-                    />
-                    <button onClick={handleSeedConsultations} className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-sky-500">
-                      Seed
-                    </button>
-                  </div>
-                  {seedStatus && <p className="mt-2 text-xs font-semibold text-sky-800">{seedStatus}</p>}
                 </div>
               </div>
             </div>

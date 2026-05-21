@@ -43,7 +43,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "analytics", label: "Interactive Analytics", icon: BarChart3, iconUrl: "/icons/people/chart.png" },
   { id: "outbreaks", label: "Disease Signals", icon: AlertTriangle, iconUrl: "/icons/3d/target.png" },
   { id: "patients", label: "Disease Statistics", icon: Users, iconUrl: "/icons/3d/virus.png" },
-  { id: "foreignAudit", label: "All Patient Statistics", icon: FileCheck, iconUrl: "/icons/3d/file-text.png" },
   { id: "fetching", label: "Live Processing", icon: Database, iconUrl: "/icons/3d/wifi.png" },
   { id: "logging", label: "System Logs", icon: ScrollText, iconUrl: "/icons/3d/notebook.png" },
   { id: "reports", label: "AI Reports", icon: FileText, iconUrl: "/icons/3d/folder.png" },
@@ -251,8 +250,8 @@ export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: bo
               </>
             ) : (
               <>
-                <Chip label="Patients" value={summary.totalPatients} color="text-blue-700" />
-                <Chip label="Episodes" value={summary.totalEpisodes.toLocaleString()} color="text-slate-900" />
+                <Chip label="Safe records" value={summary.totalPatients} color="text-blue-700" />
+                <Chip label="Signals" value={summary.totalEpisodes.toLocaleString()} color="text-slate-900" />
                 <Chip label="Foreign" value={summary.foreignEpisodes.toLocaleString()} color="text-fuchsia-700" />
                 <Chip label="24h signals" value={`+${summary.newCasesLast24h}`} color="text-red-600" />
               </>
@@ -495,7 +494,7 @@ function DashboardView({ summary, incidents, facilities, onFacilityClick, onShow
   return (
     <div className="space-y-5">
       <Panel className="overflow-hidden">
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_520px] min-h-[300px]">
+        <div className="min-h-[300px]">
           <div className="p-6 flex flex-col justify-between bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white relative overflow-hidden">
             <div className="absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, rgba(56,189,248,0.5), transparent 25%), radial-gradient(circle at 90% 10%, rgba(16,185,129,0.35), transparent 24%)" }} />
             <div className="relative z-10">
@@ -506,13 +505,12 @@ function DashboardView({ summary, incidents, facilities, onFacilityClick, onShow
               <p className="mt-3 max-w-xl text-sm text-blue-100/80">This portal observes safe feeds from connected systems. It does not upload patient files or store source records.</p>
             </div>
             <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-              <HeroMetric label="Patients" value={summary.totalPatients} />
-              <HeroMetric label="Episodes" value={summary.totalEpisodes.toLocaleString()} />
+              <HeroMetric label="Safe records" value={summary.totalPatients} />
+              <HeroMetric label="Signals" value={summary.totalEpisodes.toLocaleString()} />
               <HeroMetric label="Foreign episodes" value={summary.foreignEpisodes.toLocaleString()} />
               <HeroMetric label="Critical signals" value={summary.criticalFacilities} />
             </div>
           </div>
-          <div className="min-h-[300px]"><SurveillanceMap facilities={facilities} onFacilityClick={onFacilityClick} height="100%" /></div>
         </div>
       </Panel>
 
@@ -614,6 +612,7 @@ function OutbreaksView({ onShowEncounters }: { onShowEncounters: (d: DiseaseCode
 
 function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void }) {
   const [diagnosisCart, setDiagnosisCart] = useState<IcdDisease[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const trackedCartCodes = diagnosisCart
     .filter((item) => item.tracked && item.code in DISEASE_BY_CODE)
     .map((item) => item.code as DiseaseCode);
@@ -664,23 +663,20 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
   return (
     <div className="space-y-4">
       <Panel className="p-4">
-        <div className="grid gap-4 xl:grid-cols-[minmax(320px,520px)_1fr_auto] xl:items-start">
+        <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-center">
           <div>
             <span className="text-xs font-black text-slate-700 uppercase tracking-wide">Disease filter</span>
-            <PatientDiseaseMenu
-              cart={diagnosisCart}
-              onAdd={(item) => setDiagnosisCart((current) => current.some((entry) => entry.code === item.code) ? current : [...current, item])}
-              onRemove={(code) => setDiagnosisCart((current) => current.filter((item) => item.code !== code))}
-              onClear={() => setDiagnosisCart([])}
-            />
+            <div className="mt-2 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+              <DiagnosisCart cart={diagnosisCart} onRemove={(code) => setDiagnosisCart((current) => current.filter((item) => item.code !== code))} />
+              <button onClick={() => setFiltersOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-xs font-black text-white hover:bg-slate-800 cursor-pointer"><SlidersHorizontal className="h-4 w-4" />Open filter window</button>
+            </div>
           </div>
-          <DiagnosisCart cart={diagnosisCart} onRemove={(code) => setDiagnosisCart((current) => current.filter((item) => item.code !== code))} />
-          <button onClick={() => onShowEncounters(activeLogDisease, undefined, activeLogLabel)} className="text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl px-3 py-2 cursor-pointer xl:mt-6">Open encounter log</button>
+          <button onClick={() => onShowEncounters(activeLogDisease, undefined, activeLogLabel)} className="text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl px-4 py-3 cursor-pointer">Open encounter log</button>
         </div>
       </Panel>
       <OriginComparison disease={activeLogDisease} onShowEncounters={onShowEncounters} />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Episodes" value={list.length.toLocaleString()} icon={ClipboardList} tone="blue" sub={diagnosisCart.length ? `${diagnosisCart.length} selected in cart` : `${PATIENTS.length} patient histories`} />
+        <StatCard label="Safe signals" value={list.length.toLocaleString()} icon={ClipboardList} tone="blue" sub={diagnosisCart.length ? `${diagnosisCart.length} selected in cart` : "de-identified aggregate"} />
         <StatCard label="Foreign episodes" value={foreign.toLocaleString()} icon={UsersRound} tone="amber" />
         <StatCard label="Critical severity" value={critical.toLocaleString()} icon={AlertTriangle} tone="rose" />
         <StatCard label="Manual review" value={manualReview.toLocaleString()} icon={Search} tone="violet" />
@@ -706,6 +702,35 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
           })}
         </div>
       </Panel>
+      {filtersOpen && (
+        <div className="fixed inset-0 z-[1000] bg-slate-950/58 p-4 backdrop-blur-md" onClick={() => setFiltersOpen(false)}>
+          <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[32px] bg-white shadow-[0_40px_120px_rgba(15,23,42,0.3)]" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/70 to-cyan-50/60 px-6 py-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-blue-600">Disease statistics filters</p>
+                <h3 className="mt-1 text-xl font-black text-slate-950">Selected diagnosis window</h3>
+                <p className="mt-1 text-xs text-slate-500">Search ICD diagnosis, add to cart, remove any item, then close the window.</p>
+              </div>
+              <button onClick={() => setFiltersOpen(false)} className="rounded-2xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto bg-slate-50/70 p-5 lg:grid-cols-[minmax(360px,520px)_1fr]">
+              <Panel className="p-4 bg-white/90">
+                <PatientDiseaseMenu
+                  cart={diagnosisCart}
+                  onAdd={(item) => setDiagnosisCart((current) => current.some((entry) => entry.code === item.code) ? current : [...current, item])}
+                  onRemove={(code) => setDiagnosisCart((current) => current.filter((item) => item.code !== code))}
+                  onClear={() => setDiagnosisCart([])}
+                />
+              </Panel>
+              <DiagnosisCart cart={diagnosisCart} onRemove={(code) => setDiagnosisCart((current) => current.filter((item) => item.code !== code))} />
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
+              <button onClick={() => setDiagnosisCart([])} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer">Clear cart</button>
+              <button onClick={() => setFiltersOpen(false)} className="rounded-2xl bg-blue-600 px-5 py-2 text-xs font-black text-white hover:bg-blue-500 cursor-pointer">Apply selection</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -240,7 +240,7 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
   const selectedIcd = filters.diagnosis === "all" ? null : ICD_DISEASE_LIBRARY.find(d => d.code === filters.diagnosis);
   const selectedTracked = filters.diagnosis !== "all" ? DISEASE_BY_CODE[filters.diagnosis as DiseaseCode] : null;
   const selectedDisplay = selectedIcd ?? (selectedTracked ? { name: selectedTracked.name, icd10: selectedTracked.icd10, tracked: true } : null);
-  const visibleDiseases = searchIcdLibrary(query).slice(0, 200); // cap at 200 for render perf
+  const visibleDiseases = query.trim().length >= 2 ? searchIcdLibrary(query).slice(0, 10) : [];
 
   const toggleList = <T extends string,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
   const dateSummary = formatDateSummary(filters.date);
@@ -279,20 +279,28 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
             </div>
 
             {/* two-column body — both columns scroll independently */}
-            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(360px,440px)_1fr] overflow-hidden">
+            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(420px,560px)_1fr] overflow-hidden">
               {/* left: disease picker */}
               <div className="overflow-y-auto border-b border-slate-100 bg-slate-50/70 p-5 lg:border-b-0 lg:border-r lg:p-6 xl:p-8">
-                <SectionTitle icon={Search} title="Diagnosis library" detail="Search and pick a disease focus, or leave the stack on All." />
+                <SectionTitle icon={Search} title="Diagnosis cart" detail="Search a diagnosis, add it to the selected window, and apply when ready." />
+                <div className="mt-3 rounded-3xl border border-white bg-white p-3 shadow-sm">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Selected diagnosis</p>
+                    {draft.diagnosis !== "all" && <button onClick={() => setDraft({ ...draft, diagnosis: "all" })} className="rounded-xl bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500 hover:text-slate-950 cursor-pointer">Remove</button>}
+                  </div>
+                  <div className="rounded-2xl bg-blue-50 px-3 py-3 text-sm font-black text-blue-800">
+                    {draft.diagnosis === "all" ? "All diseases" : (ICD_DISEASE_LIBRARY.find((item) => item.code === draft.diagnosis)?.name ?? draft.diagnosis)}
+                    <span className="ml-2 font-mono text-[11px] opacity-70">{draft.diagnosis === "all" ? "National stack" : (ICD_DISEASE_LIBRARY.find((item) => item.code === draft.diagnosis)?.icd10 ?? "")}</span>
+                  </div>
+                </div>
                 <label className="mt-3 flex items-center gap-2 rounded-2xl border border-white bg-white px-3 py-2.5 shadow-sm">
                   <Search className="h-4 w-4 text-slate-400 shrink-0" />
                   <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ICD-10, category, disease..." className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400" />
                 </label>
                 <div className="mt-3 space-y-1 pr-1 lg:max-h-none">
-                  <button onClick={() => setDraft({ ...draft, diagnosis: "all" })} className={`analytics-choice w-full ${draft.diagnosis === "all" ? "is-selected" : ""}`}>
-                    <span><strong>All diseases</strong><small>National stack — all tracked groups</small></span>{draft.diagnosis === "all" && <Check className="h-4 w-4 shrink-0" />}
-                  </button>
+                  {query.trim().length < 2 && <p className="rounded-2xl bg-white/70 px-4 py-6 text-center text-xs font-bold text-slate-400">Type at least 2 letters or an ICD code to search.</p>}
                   {visibleDiseases.map((item) => (
-                    <button key={item.code} onClick={() => setDraft({ ...draft, diagnosis: item.code })} className={`analytics-choice w-full text-left ${draft.diagnosis === item.code ? "is-selected" : ""}`}>
+                    <button key={item.code} onClick={() => { setDraft({ ...draft, diagnosis: item.code }); setQuery(""); }} className={`analytics-choice w-full text-left ${draft.diagnosis === item.code ? "is-selected" : ""}`}>
                       <span className="min-w-0 flex-1">
                         <strong className="block text-xs leading-tight">{item.name}</strong>
                         <small className="flex items-center gap-1.5 mt-0.5">
@@ -305,7 +313,7 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
                       {draft.diagnosis === item.code && <Check className="h-4 w-4 shrink-0" />}
                     </button>
                   ))}
-                  {visibleDiseases.length === 0 && (
+                  {query.trim().length >= 2 && visibleDiseases.length === 0 && (
                     <p className="py-4 text-center text-xs text-slate-400">No diseases match your search.</p>
                   )}
                 </div>

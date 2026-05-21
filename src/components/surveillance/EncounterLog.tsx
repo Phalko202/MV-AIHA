@@ -64,6 +64,7 @@ export default function EncounterLog({ disease, filter, label, onClose }: Props)
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const slice = filtered.slice((page - 1) * PAGE, page * PAGE);
+  const safeRef = (encounter: PatientEncounter) => `SIG-${encounter.id.split("-").pop()?.padStart(4, "0") ?? "0000"}`;
 
   const facById = (id: string) => FACILITIES.find((facility) => facility.id === id)?.shortName ?? id;
   const activeTitle = label ?? (disease === "all" ? "All encounters" : DISEASE_BY_CODE[disease].name);
@@ -80,7 +81,7 @@ export default function EncounterLog({ disease, filter, label, onClose }: Props)
               <span className="text-[10px] font-black uppercase tracking-wider text-blue-600">Patient Encounter Reader</span>
               {selected && <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">Case sheet</span>}
             </div>
-            <h2 className="truncate text-xl font-black tracking-tight text-slate-950">{selected ? selected.episodeId : activeTitle}</h2>
+            <h2 className="truncate text-xl font-black tracking-tight text-slate-950">{selected ? safeRef(selected) : activeTitle}</h2>
             <p className="text-xs text-slate-500">
               {filtered.length.toLocaleString()} de-identified encounter{filtered.length === 1 ? "" : "s"} · no PII shown
               {disease !== "all" && ` · ICD-10 ${DISEASE_BY_CODE[disease].icd10}`}
@@ -108,7 +109,7 @@ export default function EncounterLog({ disease, filter, label, onClose }: Props)
                 <input
                   value={search}
                   onChange={(event) => { setSearch(event.target.value); setPage(1); }}
-                  placeholder="Search patient key, episode, disease, origin, atoll, facility, symptoms, prescription..."
+                  placeholder="Search disease, origin, atoll, facility, symptoms, prescription..."
                   className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400"
                 />
               </label>
@@ -145,7 +146,7 @@ export default function EncounterLog({ disease, filter, label, onClose }: Props)
               <table className="w-full min-w-[1180px] text-xs">
                 <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl">
                   <tr className="text-left text-[10px] font-black uppercase tracking-wide text-slate-500">
-                    <th className="px-5 py-3">Patient / Episode</th>
+                    <th className="px-5 py-3">Signal ref</th>
                     <th className="px-4 py-3">Disease</th>
                     <th className="px-4 py-3">Dates</th>
                     <th className="px-4 py-3">Age / Sex</th>
@@ -161,7 +162,7 @@ export default function EncounterLog({ disease, filter, label, onClose }: Props)
                 <tbody className="divide-y divide-slate-100/70">
                   {slice.map((encounter) => (
                     <tr key={encounter.id} onClick={() => setSelected(encounter)} className="group cursor-pointer bg-white/50 transition-all hover:bg-blue-50/50">
-                      <td className="px-5 py-3 font-mono text-slate-800"><span className="font-black text-slate-950">{encounter.patientKey}</span><br /><span className="text-[10px] text-blue-600">{encounter.episodeId}</span></td>
+                      <td className="px-5 py-3 font-mono text-slate-800"><span className="font-black text-slate-950">{safeRef(encounter)}</span><br /><span className="text-[10px] text-blue-600">de-identified</span></td>
                       <td className="px-4 py-3"><span className="font-black text-slate-800">{DISEASE_BY_CODE[encounter.diseaseCode].name}</span><br /><span className="text-[10px] text-slate-400">{DISEASE_BY_CODE[encounter.diseaseCode].icd10}</span></td>
                       <td className="px-4 py-3 text-slate-600"><span className="font-bold">Onset {encounter.onsetDate}</span><br /><span className="text-[10px] text-slate-400">Admit {encounter.admissionDate}</span></td>
                       <td className="px-4 py-3 text-slate-700"><span className="font-black">{encounter.ageBracket}</span><br /><span className="text-[10px] text-slate-400">{encounter.gender}</span></td>
@@ -251,8 +252,8 @@ function EncounterDetail({ encounter, facilityName }: { encounter: PatientEncoun
             <span className={`rounded-2xl border px-3 py-2 text-xs font-black ${severityColor[encounter.severity]}`}>{encounter.severity}</span>
           </div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <DetailMetric icon={UserRound} label="Patient key" value={encounter.patientKey} />
-            <DetailMetric icon={FileText} label="Episode" value={encounter.episodeId} />
+            <DetailMetric icon={UserRound} label="Identity" value="Not shown" />
+            <DetailMetric icon={FileText} label="Signal ref" value={`SIG-${encounter.id.split("-").pop()?.padStart(4, "0") ?? "0000"}`} />
             <DetailMetric icon={CalendarDays} label="Onset" value={encounter.onsetDate} />
             <DetailMetric icon={Activity} label="AI confidence" value={encounter.aiConfidence.toFixed(2)} />
           </div>
