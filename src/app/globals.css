@@ -106,10 +106,9 @@
 
 .analytics-logo-glyph img {
   border-radius: 999px;
-  object-fit: cover;
-  object-position: 83% 50%;
-  filter: grayscale(0.95) contrast(1.08) drop-shadow(0 16px 18px rgba(15, 23, 42, 0.18));
-  mix-blend-mode: luminosity;
+  object-fit: contain;
+  object-position: center;
+  filter: drop-shadow(0 16px 18px rgba(15, 23, 42, 0.18));
 }
 
 .analytics-filter-button {
@@ -384,13 +383,9 @@
 .mv-logo-medallion {
   display: inline-block;
   flex-shrink: 0;
-  border-radius: 999px;
-  background-image: url("/logo-icon.png");
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: drop-shadow(0 14px 18px rgba(15, 23, 42, 0.22));
-  mix-blend-mode: normal;
+  background: transparent !important;
+  border: 0;
+  box-shadow: none;
 }
 
 .mv-pure-3d-icon {

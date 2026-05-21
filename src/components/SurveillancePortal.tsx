@@ -24,6 +24,8 @@ const SurveillanceMap = dynamic(() => import("@/components/surveillance/Surveill
 const AnalyticsCharts = dynamic(() => import("@/components/surveillance/AnalyticsCharts"), { ssr: false });
 const EncounterLog = dynamic(() => import("@/components/surveillance/EncounterLog"), { ssr: false });
 const ReportViewer = dynamic(() => import("@/components/surveillance/ReportViewer"), { ssr: false });
+const FilterStudio = dynamic(() => import("@/components/surveillance/FilterStudio"), { ssr: false });
+import { EMPTY_FILTERS, type FilterStudioValue } from "@/components/surveillance/FilterStudio";
 
 type SidebarView = "dashboard" | "map" | "analytics" | "outbreaks" | "patients" | "foreignAudit" | "fetching" | "logging" | "reports";
 type IntakeScope = "24h" | "seeded" | "critical" | "foreign";
@@ -32,8 +34,8 @@ interface NavItem { id: SidebarView; label: string; icon: React.ComponentType<{ 
 
 const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "Command Dashboard", icon: LayoutDashboard, iconUrl: "/icons/3d/computer.png" },
-  { id: "map", label: "Maldives Disease Map", icon: Map, iconUrl: "/icons/3d/map-pin.png" },
-  { id: "analytics", label: "Interactive Analytics", icon: BarChart3, iconUrl: "/icons/3d/chart.png" },
+  { id: "map", label: "Maldives Disease Map", icon: Map, iconUrl: "/icons/people/earth.png" },
+  { id: "analytics", label: "Interactive Analytics", icon: BarChart3, iconUrl: "/icons/people/chart.png" },
   { id: "outbreaks", label: "Disease Signals", icon: AlertTriangle, iconUrl: "/icons/3d/target.png" },
   { id: "patients", label: "Patient Cohorts", icon: Users, iconUrl: "/icons/3d/boy.png" },
   { id: "foreignAudit", label: "External Patient Intelligence", icon: FileCheck, iconUrl: "/icons/3d/file-text.png" },
@@ -61,6 +63,8 @@ const PEOPLE_ICON = {
   female: "/icons/people/female.png",
   male: "/icons/people/male.png",
   earth: "/icons/people/earth.png",
+  chart: "/icons/people/chart.png",
+  logoMedallion: "/icons/people/logo-medallion.png",
 };
 
 const signalStyles = {
@@ -106,6 +110,21 @@ export default function SurveillancePortal() {
   const [encounterLog, setEncounterLog] = useState<EncounterLogRequest | null>(null);
   const [selectedReport, setSelectedReport] = useState<ReportMeta | null>(null);
   const [analyticsDisease, setAnalyticsDisease] = useState<DiseaseCode | "all">("all");
+  const [filterStudioOpen, setFilterStudioOpen] = useState(false);
+  const [globalFilters, setGlobalFilters] = useState<FilterStudioValue>(EMPTY_FILTERS);
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (globalFilters.diagnosis !== "all") count++;
+    count += globalFilters.severity.length;
+    count += globalFilters.origin.length;
+    count += globalFilters.gender.length;
+    count += globalFilters.atolls.length;
+    count += globalFilters.facilities.length;
+    if (globalFilters.dateStart || globalFilters.dateEnd) count++;
+    return count;
+  }, [globalFilters]);
+
+  useEffect(() => { if (globalFilters.diagnosis !== "all") setAnalyticsDisease(globalFilters.diagnosis); }, [globalFilters.diagnosis]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -196,6 +215,17 @@ export default function SurveillancePortal() {
             <h1 className="text-xl font-black text-slate-950 tracking-tight">{NAV_ITEMS.find((item) => item.id === view)?.label ?? "Command Dashboard"}</h1>
             <p className="text-xs text-slate-500">Ministry of Health - Maldives disease identification and surveillance</p>
           </div>
+          <div className="flex items-center gap-2 animate-fadeIn">
+            <button
+              onClick={() => setFilterStudioOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 px-3.5 py-2 text-xs font-black text-blue-700 hover:from-blue-100 hover:to-cyan-100 shadow-[0_10px_22px_rgba(37,99,235,0.14)] cursor-pointer"
+              title="Open the global Filter Studio"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              <span>Filter studio</span>
+              {activeFilterCount > 0 && <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">{activeFilterCount}</span>}
+            </button>
+          </div>
           <div className="hidden xl:flex items-center gap-2 animate-fadeIn">
             {headerStats ? (
               <>
@@ -229,10 +259,11 @@ export default function SurveillancePortal() {
           {view === "foreignAudit" && <ForeignAuditView onShowEncounters={showEncounters} />}
           {view === "fetching" && <LiveFetchingView onShowEncounters={showEncounters} />}
           {view === "logging" && <LoggingView logs={logs} />}
-          {view === "reports" && <ReportsView onOpen={setSelectedReport} />}
+          {view === "reports" && <ReportsView onOpen={setSelectedReport} globalFilters={globalFilters} />}
         </main>
       </div>
 
+      <FilterStudio open={filterStudioOpen} value={globalFilters} onApply={(next) => { setGlobalFilters(next); setFilterStudioOpen(false); }} onClose={() => setFilterStudioOpen(false)} />
       {selectedFacility && <FacilityOverlay facility={selectedFacility} onClose={() => setSelectedFacility(null)} onShowEncounters={showEncounters} />}
       {encounterLog && <EncounterLog disease={encounterLog.disease} filter={encounterLog.filter} label={encounterLog.label} onClose={() => setEncounterLog(null)} />}
       {selectedReport && <ReportViewer meta={selectedReport} onClose={() => setSelectedReport(null)} />}
@@ -257,7 +288,7 @@ function IconTile({ icon: Icon, tone = "blue", compact = false, imageUrl }: { ic
 }
 
 function LogoMedallion({ className = "h-10 w-10" }: { className?: string }) {
-  return <span aria-hidden="true" className={`mv-logo-medallion ${className}`} />;
+  return <img src={PEOPLE_ICON.logoMedallion} alt="" aria-hidden="true" className={`${className} object-contain shrink-0 drop-shadow-[0_14px_18px_rgba(15,23,42,0.22)]`} />;
 }
 
 function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -866,6 +897,7 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
             </div>
           </Panel>
           <button onClick={() => onShowEncounters("all", undefined, "Fetched surveillance episodes - all sources")} className="w-full rounded-2xl bg-slate-950 text-white px-4 py-4 text-sm font-black hover:bg-slate-800 cursor-pointer shadow-xl">Open fetched encounter log</button>
+          <LiveOpenRouterProbe />
         </div>
       </div>
 
@@ -912,6 +944,82 @@ function IntakeEpisodeRow({ encounter, index, done }: { encounter: PatientEncoun
   return <div className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white/75 px-4 py-3"><span className={`h-9 w-9 rounded-2xl flex items-center justify-center text-xs font-black ${done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-500"}`}>{done ? "OK" : index + 1}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-800">{encounter.episodeId} · {DISEASE_BY_CODE[encounter.diseaseCode].name}</p><p className="text-[11px] text-slate-500">{bot} reading {encounter.source.replace("_", " ")} · {encounter.origin} · {encounter.onsetDate}</p></div><span className={`rounded-full px-2 py-1 text-[10px] font-black ${done ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{done ? "done" : "reading"}</span></div>;
 }
 
+function LiveOpenRouterProbe() {
+  type ProbeResult = {
+    redacted?: Record<string, unknown>;
+    audit?: { removedFields: string[]; sourceHash: string; redactedTextSpans: number };
+    ensemble?: { diagnosis: string; confidence: number; severity: string; agreement: number; modelCount: number; flaggedForReview: boolean; votes: Array<{ model: string; diagnosis: string | null; confidence: number | null; latencyMs: number; error: string | null }> };
+    error?: string;
+  };
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<ProbeResult | null>(null);
+
+  const runProbe = async () => {
+    setRunning(true);
+    setResult(null);
+    const encounter = encountersFor("all")[0];
+    // Synthesize PHI-shaped fields onto the encounter so the redactor has something to strip.
+    const raw = {
+      ...encounter,
+      name: "REDACT_ME Patient Name",
+      nationalId: "A123456",
+      dateOfBirth: "1988-03-12",
+      phone: "+960 7771234",
+      address: "Maa. Sample Villa, Male",
+      clinicianNotes: `Mr. REDACT_ME Patient Name (DOB: 1988-03-12, phone +960 7771234) presented with ${encounter.symptoms.join(", ")}. Plan: ${encounter.prescriptionSignals.join("; ")}.`,
+      nationality: encounter.origin === "foreign" ? "Foreign" : "Maldivian",
+    };
+    try {
+      const response = await fetch("/api/ai/analyze-episode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ episode: raw }),
+      });
+      const payload = await response.json();
+      setResult(payload);
+    } catch (caught) {
+      setResult({ error: caught instanceof Error ? caught.message : "Probe failed" });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Panel className="p-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-emerald-600" /><p className="text-sm font-black text-slate-800">Live OpenRouter probe</p></div>
+        <button onClick={runProbe} disabled={running} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">{running ? "Running…" : "Run on 1 episode"}</button>
+      </div>
+      <p className="text-[11px] text-slate-500 mb-2">Pulls one Vinavi episode, redacts PHI, runs the ensemble, and shows agreement plus which fields were stripped.</p>
+      {result?.error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700">{result.error}</p>}
+      {result?.audit && (
+        <div className="space-y-2 text-[11px]">
+          <div className="rounded-xl bg-emerald-50 px-3 py-2 text-emerald-800">
+            <p className="font-black">PHI stripped: {result.audit.removedFields.length} field(s), {result.audit.redactedTextSpans} free-text span(s)</p>
+            <p className="text-emerald-700 font-mono break-all">audit hash {result.audit.sourceHash}</p>
+            <p className="text-emerald-700">removed: {result.audit.removedFields.join(", ") || "—"}</p>
+          </div>
+          {result.ensemble && (
+            <div className="rounded-xl bg-slate-50 px-3 py-2">
+              <p className="font-black text-slate-900">Ensemble diagnosis: {result.ensemble.diagnosis}</p>
+              <p className="text-slate-600">severity {result.ensemble.severity} · confidence {(result.ensemble.confidence * 100).toFixed(0)}% · agreement {(result.ensemble.agreement * 100).toFixed(0)}% · {result.ensemble.modelCount} models · {result.ensemble.flaggedForReview ? "manual review" : "auto-promote"}</p>
+              <div className="mt-2 space-y-1">
+                {result.ensemble.votes.map((vote) => (
+                  <div key={vote.model} className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-slate-500 truncate">{vote.model.split("/").pop()}</span>
+                    <span className={`font-black ${vote.error ? "text-rose-600" : "text-slate-800"}`}>{vote.error ? "err" : vote.diagnosis ?? "—"}</span>
+                    <span className="text-slate-400">{vote.latencyMs}ms</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function LoggingView({ logs }: { logs: LogEntry[] }) {
   return (
     <div className="space-y-4">
@@ -936,33 +1044,128 @@ function LoggingView({ logs }: { logs: LogEntry[] }) {
   );
 }
 
-function ReportsView({ onOpen }: { onOpen: (report: ReportMeta) => void }) {
+function ReportsView({ onOpen, globalFilters }: { onOpen: (report: ReportMeta) => void; globalFilters: FilterStudioValue }) {
+  type GeneratedRun = {
+    meta: ReportMeta;
+    markdown: string;
+    ensembleSummary: { sampled: number; averageAgreement: number; averageConfidence: number; flaggedForReview: number; totalRedactedFields: number };
+    ensembleRuns: Array<{ episodeRef?: string; diagnosis?: string; confidence?: number; severity?: string; agreement?: number; flaggedForReview?: boolean; modelCount?: number; audit: { removedFields: string[]; sourceHash: string; redactedTextSpans: number } }>;
+  };
+  const [generated, setGenerated] = useState<GeneratedRun[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [template, setTemplate] = useState<"daily" | "weekly" | "outbreak" | "facility" | "foreign">("weekly");
+  const [error, setError] = useState<string | null>(null);
+  const [openMd, setOpenMd] = useState<GeneratedRun | null>(null);
+
   const modelChain = [
-    { name: "OpenRouter Clinical", role: "clinical extraction using a free/low-cost routed model", icon: Stethoscope, tone: "emerald" as const },
-    { name: "DeepSeek", role: "reasoning and contradiction checks", icon: BrainCircuit, tone: "blue" as const },
-    { name: "Research RAG", role: "WHO/MOH evidence and citations", icon: Microscope, tone: "violet" as const },
-    { name: "MV-AIHA Router", role: "final synthesis, risk language, privacy guard", icon: Bot, tone: "amber" as const },
+    { name: "OpenRouter Clinical", role: "clinical extraction via free Llama-3.3 / Qwen 2.5 / Gemma 2", icon: Stethoscope, tone: "emerald" as const },
+    { name: "DeepSeek R1", role: "reasoning + contradiction checks (free tier)", icon: BrainCircuit, tone: "blue" as const },
+    { name: "Hermes / Mistral", role: "second-opinion ensemble vote", icon: Microscope, tone: "violet" as const },
+    { name: "MV-AIHA Router", role: "majority vote, PHI guard, markdown synthesis", icon: Bot, tone: "amber" as const },
   ];
+
+  const handleGenerate = async () => {
+    setError(null);
+    setGenerating(true);
+    try {
+      const response = await fetch("/api/reports/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template,
+          diseaseCode: globalFilters.diagnosis,
+          facilityId: globalFilters.facilities[0],
+          sampleSize: 4,
+        }),
+      });
+      if (!response.ok) throw new Error(`Generator returned HTTP ${response.status}`);
+      const payload = await response.json() as GeneratedRun;
+      setGenerated((prev) => [payload, ...prev].slice(0, 8));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Generation failed");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const downloadMarkdown = (run: GeneratedRun) => {
+    const blob = new Blob([run.markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${run.meta.id}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Reports" value={REPORTS.length} icon={FileText} tone="blue" />
-        <StatCard label="Ready" value={REPORTS.filter((report) => report.status === "Ready").length} icon={FileCheck} tone="emerald" />
-        <StatCard label="Pages" value={REPORTS.reduce((sum, report) => sum + report.pageCount, 0).toLocaleString()} icon={ClipboardList} tone="violet" />
-        <StatCard label="Facility-specific" value="13" icon={Building2} tone="amber" />
+        <StatCard label="Library reports" value={REPORTS.length} icon={FileText} tone="blue" />
+        <StatCard label="Live ensemble runs" value={generated.length} icon={Sparkles} tone="emerald" />
+        <StatCard label="Pages on file" value={REPORTS.reduce((sum, report) => sum + report.pageCount, 0).toLocaleString()} icon={ClipboardList} tone="violet" />
+        <StatCard label="Manual review (live)" value={generated.reduce((sum, run) => sum + (run.ensembleSummary?.flaggedForReview ?? 0), 0)} icon={ShieldAlert} tone="amber" />
       </div>
-      <Panel className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div><p className="text-sm font-black text-slate-800">Agentic report factory</p><p className="text-xs text-slate-500">Reports combine clinical model reading, reasoning, research retrieval, and privacy-safe final drafting.</p></div>
-          <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black uppercase text-blue-700">broad synthesis</span>
+
+      <Panel className="p-5 modern-menu-shell">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Live generator</p>
+            <h2 className="text-xl font-black tracking-tight text-slate-950">Generate a privacy-safe surveillance report</h2>
+            <p className="text-xs text-slate-500 max-w-xl">Pulls live signal from {globalFilters.diagnosis === "all" ? "all 10 tracked diseases" : DISEASE_BY_CODE[globalFilters.diagnosis].name}{globalFilters.facilities[0] ? ` at ${FACILITIES.find((facility) => facility.id === globalFilters.facilities[0])?.shortName}` : ""}, redacts every patient through <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">src/lib/redact.ts</code>, then sends only de-identified clinical text to an ensemble of 5+ free OpenRouter models. Majority vote suppresses single-model hallucination.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {(["daily", "weekly", "outbreak", "facility", "foreign"] as const).map((option) => (
+              <button key={option} onClick={() => setTemplate(option)} className={`rounded-2xl px-3 py-2 text-[11px] font-black capitalize transition-all cursor-pointer ${template === option ? "bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-[0_14px_28px_rgba(37,99,235,0.22)]" : "bg-white text-slate-600 border border-slate-200 hover:text-slate-900"}`}>{option}</button>
+            ))}
+            <button onClick={handleGenerate} disabled={generating} className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-xs font-black text-white shadow-[0_14px_28px_rgba(16,185,129,0.26)] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
+              <Sparkles className="h-3.5 w-3.5" />{generating ? "Generating…" : "Generate report"}
+            </button>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        {error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">{error}</p>}
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
           {modelChain.map((model) => <div key={model.name} className="rounded-2xl border border-slate-100 bg-white/75 p-3"><IconTile icon={model.icon} tone={model.tone} compact /><p className="mt-2 text-sm font-black text-slate-900">{model.name}</p><p className="text-xs leading-relaxed text-slate-500">{model.role}</p></div>)}
         </div>
       </Panel>
+
+      {generated.length > 0 && (
+        <Panel className="p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div><p className="text-sm font-black text-slate-900">Live generated reports</p><p className="text-xs text-slate-500">Each report is built from a fresh ensemble run on de-identified episodes.</p></div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase text-emerald-700">openrouter live</span>
+          </div>
+          <div className="space-y-2">
+            {generated.map((run) => (
+              <div key={run.meta.id} className="rounded-2xl border border-slate-100 bg-white/80 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-slate-950 truncate">{run.meta.title}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{run.meta.id} · sampled {run.ensembleSummary.sampled} · agreement {(run.ensembleSummary.averageAgreement * 100).toFixed(0)}% · confidence {(run.ensembleSummary.averageConfidence * 100).toFixed(0)}% · redacted {run.ensembleSummary.totalRedactedFields} field instances</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => setOpenMd(run)} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-black text-slate-700 hover:text-slate-950 cursor-pointer">Preview</button>
+                    <button onClick={() => downloadMarkdown(run)} className="rounded-xl bg-blue-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-blue-500 cursor-pointer">Download .md</button>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
+                  {run.ensembleRuns.map((row) => (
+                    <div key={row.episodeRef} className="rounded-xl bg-slate-50 px-3 py-2">
+                      <p className="font-black text-slate-800 truncate">{row.diagnosis ?? "n/a"}</p>
+                      <p className="text-slate-500">Ref {row.episodeRef} · {row.modelCount ?? 0} models · {(row.agreement ? row.agreement * 100 : 0).toFixed(0)}% agree</p>
+                      <p className="text-slate-400 truncate">redacted {row.audit.removedFields.length} fields · hash {row.audit.sourceHash.slice(0, 8)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
       <Panel className="report-lagoon-panel overflow-hidden bg-white/54">
         <div className="relative z-10 px-4 py-3 border-b border-white/70 flex items-center justify-between gap-3 bg-white/38 backdrop-blur-xl">
-          <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-blue-600" /><span className="text-sm font-black text-slate-800">AI-assisted reports</span></div>
+          <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-blue-600" /><span className="text-sm font-black text-slate-800">Library reports</span></div>
           <div className="hidden md:flex items-center gap-2 rounded-2xl border border-white/80 bg-white/70 px-3 py-2 text-xs text-slate-500"><Search className="h-3.5 w-3.5" />Search</div>
         </div>
         <div className="relative z-10 p-3 space-y-2">
@@ -977,6 +1180,21 @@ function ReportsView({ onOpen }: { onOpen: (report: ReportMeta) => void }) {
           ))}
         </div>
       </Panel>
+
+      {openMd && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 backdrop-blur-md p-4" onClick={() => setOpenMd(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[88vh] overflow-hidden flex flex-col" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-slate-100">
+              <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Markdown preview</p><h3 className="text-lg font-black text-slate-950 truncate">{openMd.meta.title}</h3></div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => downloadMarkdown(openMd)} className="rounded-xl bg-blue-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-blue-500 cursor-pointer">Download .md</button>
+                <button onClick={() => setOpenMd(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 cursor-pointer"><X className="h-5 w-5" /></button>
+              </div>
+            </div>
+            <pre className="px-6 py-4 overflow-auto text-[12px] leading-relaxed whitespace-pre-wrap text-slate-800 font-mono">{openMd.markdown}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
