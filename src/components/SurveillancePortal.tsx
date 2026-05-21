@@ -42,7 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "map", label: "Maldives Disease Map", icon: Map, iconUrl: "/icons/people/earth.png" },
   { id: "analytics", label: "Interactive Analytics", icon: BarChart3, iconUrl: "/icons/people/chart.png" },
   { id: "outbreaks", label: "Disease Signals", icon: AlertTriangle, iconUrl: "/icons/3d/target.png" },
-  { id: "patients", label: "Disease Statistics", icon: Users, iconUrl: "/icons/3d/virus.svg" },
+  { id: "patients", label: "Disease Statistics", icon: Users, iconUrl: "/icons/3d/virus.png" },
   { id: "foreignAudit", label: "All Patient Statistics", icon: FileCheck, iconUrl: "/icons/3d/file-text.png" },
   { id: "fetching", label: "Live Processing", icon: Database, iconUrl: "/icons/3d/wifi.png" },
   { id: "logging", label: "System Logs", icon: ScrollText, iconUrl: "/icons/3d/notebook.png" },
