@@ -25,7 +25,7 @@ import {
   type DiseaseCode,
   type PatientEncounter,
 } from "@/lib/surveillance-api";
-import { ICD_DISEASE_LIBRARY, searchIcdLibrary, TRACKED_CODES } from "@/lib/icd-library";
+import { ICD_DISEASE_LIBRARY, searchIcdLibrary } from "@/lib/icd-library";
 import {
   DEFAULT_ANALYTICS_FILTERS,
   analyticsDateBounds,
@@ -121,6 +121,31 @@ const DATE_PRESETS: { value: DatePreset; label: string }[] = [
   { value: "last30", label: "30 days" },
 ];
 
+function selectedDiagnosisCodes(filters: AnalyticsFilterState) {
+  return filters.diagnoses.length > 0 ? filters.diagnoses : filters.diagnosis !== "all" ? [filters.diagnosis] : [];
+}
+
+function isKnownDiseaseCode(code: string): code is DiseaseCode {
+  return code in DISEASE_BY_CODE;
+}
+
+function primaryDiseaseCode(filters: AnalyticsFilterState): DiseaseCode | null {
+  const codes = selectedDiagnosisCodes(filters);
+  return codes.length === 1 && isKnownDiseaseCode(codes[0]) ? codes[0] : null;
+}
+
+function diseaseRowsForFilters(filters: AnalyticsFilterState) {
+  const selected = selectedDiagnosisCodes(filters).filter(isKnownDiseaseCode);
+  return selected.length > 0 ? DISEASES.filter((disease) => selected.includes(disease.code)) : DISEASES.slice(0, 10);
+}
+
+function diagnosisDisplay(code: string) {
+  const icd = ICD_DISEASE_LIBRARY.find((item) => item.code === code);
+  if (icd) return icd;
+  const disease = isKnownDiseaseCode(code) ? DISEASE_BY_CODE[code] : null;
+  return disease ? { code, name: disease.name, icd10: disease.icd10, category: disease.category } : { code, name: code, icd10: code.toUpperCase(), category: "custom" };
+}
+
 const MENU_ICON = {
   burden: "/icons/people/chart.png",
   demographics: "/icons/3d/boy.png",
@@ -140,14 +165,15 @@ export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersCh
   useEffect(() => { requestAnimationFrame(() => setReady(true)); }, []);
 
   const chartDef = CHARTS.find((c) => c.id === active)!;
-  const selectedDiseaseCode = filters.diagnosis === "all" ? null : filters.diagnosis as DiseaseCode;
-  const selectedDiseaseName = filters.diagnosis === "all" ? "All diseases" : (DISEASE_BY_CODE[filters.diagnosis as DiseaseCode]?.name ?? filters.diagnosis);
-  const filteredCount = useMemo(() => filterAnalyticsEncounters(encountersFor(filters.diagnosis as DiseaseCode | "all"), filters).length, [filters]);
+  const selectedCodes = selectedDiagnosisCodes(filters);
+  const selectedDiseaseCode = primaryDiseaseCode(filters);
+  const selectedDiseaseName = selectedCodes.length === 0 ? "No diagnosis selected" : selectedCodes.length === 1 ? diagnosisDisplay(selectedCodes[0]).name : `${selectedCodes.length} diagnoses selected`;
+  const filteredCount = useMemo(() => filterAnalyticsEncounters(encountersFor("all"), filters).length, [filters]);
   const notApplicableReason =
-    chartDef.requiresDisease && filters.diagnosis === "all"
-      ? "Select a specific disease above to view this chart."
-      : chartDef.notApplicableReason && filters.diagnosis !== "all"
-        ? chartDef.notApplicableReason(filters.diagnosis as DiseaseCode)
+    chartDef.requiresDisease && !selectedDiseaseCode
+      ? selectedCodes.length > 1 ? "Select one specific diagnosis to view this disease-specific chart." : "Select a specific diagnosis above to view this chart."
+      : chartDef.notApplicableReason && selectedDiseaseCode
+        ? chartDef.notApplicableReason(selectedDiseaseCode)
         : null;
 
   return (
@@ -208,7 +234,7 @@ export default function AnalyticsCharts({ onShowEncounters, filters, onFiltersCh
             <p className="text-sm text-slate-600 max-w-md">{notApplicableReason}</p>
           </div>
         ) : (
-          <div key={`${active}-${filters.diagnosis}-${filters.date.preset}-${filters.date.start}-${filters.date.end}-${filters.severity.join("-")}-${filters.origin.join("-")}-${filters.gender.join("-")}-${filters.atolls.join("-")}-${filters.facilities.join("-")}-${filters.outcomes.join("-")}`} className="flex-1 min-h-[360px] analytics-chart-frame animate-chartIn">
+          <div key={`${active}-${selectedCodes.join("-")}-${filters.date.preset}-${filters.date.start}-${filters.date.end}-${filters.severity.join("-")}-${filters.origin.join("-")}-${filters.gender.join("-")}-${filters.atolls.join("-")}-${filters.facilities.join("-")}-${filters.outcomes.join("-")}`} className="flex-1 min-h-[360px] analytics-chart-frame animate-chartIn">
             <ChartRenderer chartId={active} filters={filters} onShowEncounters={onShowEncounters} />
           </div>
         )}
@@ -236,10 +262,9 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
   }, [open]);
 
   const activeCount = countAnalyticsFilters(filters);
-  // selected display: search ICD library first, then tracked diseases, then null
-  const selectedIcd = filters.diagnosis === "all" ? null : ICD_DISEASE_LIBRARY.find(d => d.code === filters.diagnosis);
-  const selectedTracked = filters.diagnosis !== "all" ? DISEASE_BY_CODE[filters.diagnosis as DiseaseCode] : null;
-  const selectedDisplay = selectedIcd ?? (selectedTracked ? { name: selectedTracked.name, icd10: selectedTracked.icd10, tracked: true } : null);
+  const selectedCodes = selectedDiagnosisCodes(filters);
+  const draftCodes = selectedDiagnosisCodes(draft);
+  const selectedDisplay = selectedCodes.length === 0 ? null : selectedCodes.length === 1 ? diagnosisDisplay(selectedCodes[0]) : { name: `${selectedCodes.length} diagnoses selected`, icd10: "multi" };
   const visibleDiseases = query.trim().length >= 2 ? searchIcdLibrary(query).slice(0, 10) : [];
 
   const toggleList = <T extends string,>(list: T[], value: T) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -254,7 +279,7 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[9px] font-black uppercase tracking-wider text-blue-600">Diagnosis & filters</span>
-          <span className="block truncate text-xs font-black text-slate-800">{selectedDisplay?.name ?? "All diseases"}</span>
+          <span className="block truncate text-xs font-black text-slate-800">{selectedDisplay?.name ?? "No diagnosis selected"}</span>
           <span className="block truncate text-[10px] font-semibold text-slate-400">{dateSummary}{activeCount > 1 ? ` · ${activeCount - 1} more filters` : ""}</span>
         </span>
         {activeCount > 0 && <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">{activeCount}</span>}
@@ -286,11 +311,23 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
                 <div className="mt-3 rounded-3xl border border-white bg-white p-3 shadow-sm">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Selected diagnosis</p>
-                    {draft.diagnosis !== "all" && <button onClick={() => setDraft({ ...draft, diagnosis: "all" })} className="rounded-xl bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500 hover:text-slate-950 cursor-pointer">Remove</button>}
+                    {draftCodes.length > 0 && <button onClick={() => setDraft({ ...draft, diagnosis: "all", diagnoses: [] })} className="rounded-xl bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500 hover:text-slate-950 cursor-pointer">Clear</button>}
                   </div>
-                  <div className="rounded-2xl bg-blue-50 px-3 py-3 text-sm font-black text-blue-800">
-                    {draft.diagnosis === "all" ? "All diseases" : (ICD_DISEASE_LIBRARY.find((item) => item.code === draft.diagnosis)?.name ?? draft.diagnosis)}
-                    <span className="ml-2 font-mono text-[11px] opacity-70">{draft.diagnosis === "all" ? "National stack" : (ICD_DISEASE_LIBRARY.find((item) => item.code === draft.diagnosis)?.icd10 ?? "")}</span>
+                  <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto rounded-2xl bg-blue-50 px-3 py-3 text-sm font-black text-blue-800">
+                    {draftCodes.length === 0 && <span className="text-slate-400">No diagnosis selected</span>}
+                    {draftCodes.map((code) => {
+                      const display = diagnosisDisplay(code);
+                      return (
+                        <button key={code} type="button" onClick={() => {
+                          const nextDiagnoses = draftCodes.filter((entry) => entry !== code);
+                          setDraft({ ...draft, diagnoses: nextDiagnoses, diagnosis: nextDiagnoses.length === 1 ? nextDiagnoses[0] as AnalyticsFilterState["diagnosis"] : "all" });
+                        }} className="inline-flex max-w-full items-center gap-2 rounded-xl bg-white px-3 py-2 text-left shadow-sm hover:text-rose-700 cursor-pointer">
+                          <span className="min-w-0 truncate">{display.name}</span>
+                          <span className="shrink-0 font-mono text-[11px] opacity-70">{display.icd10}</span>
+                          <X className="h-3.5 w-3.5 shrink-0" />
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <label className="mt-3 flex items-center gap-2 rounded-2xl border border-white bg-white px-3 py-2.5 shadow-sm">
@@ -300,17 +337,19 @@ function AnalyticsFilterLauncher({ filters, onChange }: { filters: AnalyticsFilt
                 <div className="mt-3 space-y-1 pr-1 lg:max-h-none">
                   {query.trim().length < 2 && <p className="rounded-2xl bg-white/70 px-4 py-6 text-center text-xs font-bold text-slate-400">Type at least 2 letters or an ICD code to search.</p>}
                   {visibleDiseases.map((item) => (
-                    <button key={item.code} onClick={() => { setDraft({ ...draft, diagnosis: item.code }); setQuery(""); }} className={`analytics-choice w-full text-left ${draft.diagnosis === item.code ? "is-selected" : ""}`}>
+                    <button key={item.code} onClick={() => {
+                      const nextDiagnoses = toggleList(draftCodes, item.code);
+                      setDraft({ ...draft, diagnoses: nextDiagnoses, diagnosis: nextDiagnoses.length === 1 ? nextDiagnoses[0] as AnalyticsFilterState["diagnosis"] : "all" });
+                    }} className={`analytics-choice w-full text-left ${draftCodes.includes(item.code) ? "is-selected" : ""}`}>
                       <span className="min-w-0 flex-1">
                         <strong className="block text-xs leading-tight">{item.name}</strong>
                         <small className="flex items-center gap-1.5 mt-0.5">
                           <span className="font-mono">{item.icd10}</span>
                           <span>·</span>
                           <span>{item.category}</span>
-                          {item.tracked && <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700">Tracked</span>}
                         </small>
                       </span>
-                      {draft.diagnosis === item.code && <Check className="h-4 w-4 shrink-0" />}
+                      {draftCodes.includes(item.code) && <Check className="h-4 w-4 shrink-0" />}
                     </button>
                   ))}
                   {query.trim().length >= 2 && visibleDiseases.length === 0 && (
@@ -467,11 +506,11 @@ function dateRangeDays(filter: AnalyticsDateFilter) {
 function buildDailyDiseaseRows(filters: AnalyticsFilterState) {
   const days = dateRangeDays(filters.date);
   if (days.length === 0) return [];
-  const scope = filters.diagnosis === "all" ? encountersFor("all") : encountersFor(filters.diagnosis as DiseaseCode);
-  const encounters = filterAnalyticsEncounters(scope, filters);
+  const encounters = filterAnalyticsEncounters(encountersFor("all"), filters);
+  const diseases = diseaseRowsForFilters(filters);
   return days.map((date) => {
     const row: { date: string; day: string } & Record<string, number | string> = { date, day: date.slice(5) };
-    for (const disease of DISEASES.slice(0, 10)) {
+    for (const disease of diseases) {
       row[disease.name] = encounters.filter((encounter) => encounter.onsetDate === date && encounter.diseaseCode === disease.code).length;
     }
     return row;
@@ -481,7 +520,7 @@ function buildDailyDiseaseRows(filters: AnalyticsFilterState) {
 function buildDailyCaseRows(disease: DiseaseCode, filters: AnalyticsFilterState) {
   const days = dateRangeDays(filters.date);
   if (days.length === 0) return [];
-  const encounters = filterAnalyticsEncounters(encountersFor(disease), { ...filters, diagnosis: disease });
+  const encounters = filterAnalyticsEncounters(encountersFor(disease), { ...filters, diagnosis: disease, diagnoses: [disease] });
   return days.map((date) => {
     const cases = encounters.filter((encounter) => encounter.onsetDate === date).length;
     return { date, day: date.slice(5), cases, newCases: cases };
@@ -500,9 +539,10 @@ function ChartRenderer({
   filters: AnalyticsFilterState;
   onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void;
 }) {
-  const disease = filters.diagnosis as DiseaseCode | "all";
+  const disease = primaryDiseaseCode(filters) ?? "all";
   const dateFilter = filters.date;
-  const encounters = useMemo(() => filterAnalyticsEncounters(encountersFor(disease), filters), [disease, filters]);
+  const encounters = useMemo(() => filterAnalyticsEncounters(encountersFor("all"), filters), [filters]);
+  const visibleDiseaseRows = diseaseRowsForFilters(filters);
 
   if (chartId === "weekly_trend") {
     const dailyData = buildDailyDiseaseRows(filters);
@@ -515,7 +555,7 @@ function ChartRenderer({
             <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} />
             <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(37,99,235,0.04)" }} />
             <Legend wrapperStyle={{ fontSize: 10 }} />
-            {DISEASES.slice(0, 10).map((diseaseItem, index) => (
+            {visibleDiseaseRows.map((diseaseItem, index) => (
               <Bar key={diseaseItem.code} dataKey={diseaseItem.name} stackId="daily" fill={PALETTE[index]} radius={index === 9 ? [8, 8, 0, 0] : [0, 0, 0, 0]} maxBarSize={44} />
             ))}
           </BarChart>
@@ -525,7 +565,7 @@ function ChartRenderer({
 
     const data = filterWeeklyRows(["W14", "W15", "W16", "W17", "W18", "W19", "W20"].map((week, i) => {
       const row: { week: string } & Record<string, number | string> = { week };
-      for (const d of DISEASES) {
+      for (const d of visibleDiseaseRows) {
         row[d.name] = weeklySeriesFor(d.code)[i].cases;
       }
       return row;
@@ -538,7 +578,7 @@ function ChartRenderer({
           <YAxis tick={{ fontSize: 11 }} />
           <Tooltip contentStyle={{ fontSize: 12 }} />
           <Legend wrapperStyle={{ fontSize: 10 }} />
-          {DISEASES.slice(0, 10).map((d, i) => (
+          {visibleDiseaseRows.map((d, i) => (
             <Area key={d.code} type="monotone" dataKey={d.name} stackId="1" stroke={PALETTE[i]} fill={PALETTE[i] + "55"} strokeWidth={1.5} />
           ))}
         </AreaChart>

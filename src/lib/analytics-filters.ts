@@ -14,6 +14,7 @@ export interface AnalyticsDateFilter {
 
 export interface AnalyticsFilterState {
   diagnosis: DiseaseCode | "all" | (string & Record<never, never>);
+  diagnoses: string[];
   date: AnalyticsDateFilter;
   severity: PatientEncounter["severity"][];
   origin: PatientEncounter["origin"][];
@@ -27,6 +28,7 @@ export type EncounterLogFilter = Record<string, unknown>;
 
 export const DEFAULT_ANALYTICS_FILTERS: AnalyticsFilterState = {
   diagnosis: "all",
+  diagnoses: [],
   date: { preset: "all", start: "", end: "" },
   severity: [],
   origin: [],
@@ -54,7 +56,8 @@ export function isDateInAnalyticsBounds(date: string, filter: AnalyticsDateFilte
 }
 
 export function matchesAnalyticsFilters(encounter: PatientEncounter, filters: AnalyticsFilterState) {
-  if (filters.diagnosis !== "all" && encounter.diseaseCode !== filters.diagnosis) return false;
+  const selectedDiagnoses = filters.diagnoses.length > 0 ? filters.diagnoses : filters.diagnosis !== "all" ? [filters.diagnosis] : [];
+  if (selectedDiagnoses.length > 0 && !selectedDiagnoses.includes(encounter.diseaseCode)) return false;
   if (!isDateInAnalyticsBounds(encounter.onsetDate, filters.date)) return false;
   if (filters.severity.length > 0 && !filters.severity.includes(encounter.severity)) return false;
   if (filters.origin.length > 0 && !filters.origin.includes(encounter.origin)) return false;
@@ -86,7 +89,7 @@ export function analyticsFiltersToEncounterLogFilter(filters: AnalyticsFilterSta
 
 export function countAnalyticsFilters(filters: AnalyticsFilterState) {
   let count = 0;
-  if (filters.diagnosis !== "all") count++;
+  count += filters.diagnoses.length > 0 ? filters.diagnoses.length : filters.diagnosis !== "all" ? 1 : 0;
   if (filters.date.preset !== "all" || filters.date.start || filters.date.end) count++;
   count += filters.severity.length;
   count += filters.origin.length;

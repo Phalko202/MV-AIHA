@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { FOREIGN_CONSULTATION_COUNT, FOREIGN_PATIENTS } from "@/lib/foreign-data";
 
 interface ForeignFeedEvent {
   episodeId: string;
@@ -22,16 +23,6 @@ function queue() {
   return store.mvAihsForeignEvents;
 }
 
-const diagnoses = [
-  { diagnosis: "Dengue fever watch", icd10Code: "A90" },
-  { diagnosis: "Acute gastroenteritis", icd10Code: "A09" },
-  { diagnosis: "Influenza-like illness", icd10Code: "J11" },
-  { diagnosis: "Community-acquired pneumonia", icd10Code: "J18" },
-];
-
-const facilities = ["HMH", "HGP2", "TTH", "IGMH"];
-const ageBands = ["20-29", "30-39", "40-49", "50-59"];
-
 function summary() {
   const items = queue();
   const readyEvents = items.filter((item) => item.status === "ready").slice(-100).reverse();
@@ -40,6 +31,8 @@ function summary() {
     total: items.length,
     ready: readyEvents.length,
     pending: pendingEvents.length,
+    sourcePatients: FOREIGN_PATIENTS.length,
+    sourceConsultations: FOREIGN_CONSULTATION_COUNT,
     readyEvents,
     pendingEvents,
     updatedAt: new Date().toISOString(),
@@ -56,21 +49,22 @@ export async function POST(request: NextRequest) {
   const items = queue();
   const now = Date.now();
   for (let index = 0; index < amount; index += 1) {
-    const sequence = items.length + 1;
-    const disease = diagnoses[sequence % diagnoses.length];
+    const sequence = items.length;
+    const patient = FOREIGN_PATIENTS[Math.floor(sequence / 50) % FOREIGN_PATIENTS.length];
+    const consultation = patient.consultations[sequence % patient.consultations.length];
     items.push({
-      episodeId: `FOR-${new Date(now).getFullYear()}-${sequence.toString().padStart(5, "0")}`,
-      facilityId: facilities[sequence % facilities.length],
-      diagnosis: disease.diagnosis,
-      icd10Code: disease.icd10Code,
+      episodeId: `${consultation.id}-${items.length + 1}`,
+      facilityId: consultation.facilityId,
+      diagnosis: consultation.diagnosis,
+      icd10Code: consultation.icd10Code,
       status: "ready",
       receivedAt: new Date(now + index * 300).toISOString(),
       pendingUntil: null,
-      sectionCount: 3 + (sequence % 4),
-      hasVitals: sequence % 2 === 0,
+      sectionCount: consultation.sectionCount,
+      hasVitals: consultation.hasVitals,
       origin: "foreign",
-      ageBand: ageBands[sequence % ageBands.length],
-      gender: sequence % 2 === 0 ? "Male" : "Female",
+      ageBand: patient.ageBand,
+      gender: patient.gender,
     });
   }
   if (items.length > 2000) items.splice(0, items.length - 2000);

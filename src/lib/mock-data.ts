@@ -64,15 +64,15 @@ export interface HospitalLocation {
 export const HOSPITALS: HospitalLocation[] = [
   { name: "IGMH (Indira Gandhi Memorial Hospital)", lat: 4.1755, lng: 73.5093, status: "busy", beds: 500, occupancy: 87 },
   { name: "ADK Hospital", lat: 4.1718, lng: 73.5089, status: "operational", beds: 300, occupancy: 62 },
-  { name: "Hulhumalé Hospital", lat: 4.2117, lng: 73.5400, status: "critical", beds: 150, occupancy: 95 },
-  { name: "Tree Top Hospital", lat: 4.2054, lng: 73.5370, status: "operational", beds: 210, occupancy: 45 },
+  { name: "Hulhumalé Hospital", lat: 4.2118, lng: 73.5433, status: "critical", beds: 150, occupancy: 95 },
+  { name: "Tree Top Hospital", lat: 4.2225, lng: 73.5427, status: "operational", beds: 210, occupancy: 45 },
   { name: "Vilingili Regional Hospital", lat: -0.7533, lng: 73.4333, status: "operational", beds: 80, occupancy: 38 },
 ];
 
 /* ------------------------------------------------------------------ */
 /*  PATIENTS                                                           */
 /* ------------------------------------------------------------------ */
-export const MOCK_PATIENTS: Patient[] = [
+const BASE_PATIENTS: Patient[] = [
   {
     id: "patient12312",
     name: "Ahmed Rasheed",
@@ -212,6 +212,83 @@ export const MOCK_PATIENTS: Patient[] = [
     ],
   },
 ];
+
+const FIRST_NAMES = ["Ahmed", "Mariyam", "Hassan", "Aminath", "Ibrahim", "Fathimath", "Mohamed", "Aishath", "Ali", "Noora", "Yusuf", "Leena"];
+const FAMILY_NAMES = ["Rasheed", "Naseer", "Hameed", "Shareef", "Waheed", "Latheef", "Saeed", "Zahir", "Hassan", "Manik", "Faiz", "Jaleel"];
+const ISLANDS = ["Male", "Hulhumale", "Villingili", "Thimarafushi", "Kulhudhuffushi", "Ungoofaaru", "Gan", "Hithadhoo"];
+const ATOLLS = ["Kaafu", "Kaafu", "Kaafu", "Thaa", "Haa Dhaalu", "Raa", "Laamu", "Addu"];
+const HOSPITAL_NAMES = ["IGMH", "Hulhumalé Hospital", "Tree Top Hospital", "ADK Hospital"];
+const EPISODE_TEMPLATES = [
+  { diagnosis: "Acute Respiratory Infection", specialty: "Internal Medicine", complaint: "Fever, cough, sore throat, and body aches reported for three days.", prescription: "Paracetamol 500mg PRN, oral fluids, and review if fever persists.", service: "CBC and influenza rapid test ordered." },
+  { diagnosis: "Dengue Fever Review", specialty: "General Medicine", complaint: "High fever with headache, myalgia, and reduced appetite.", prescription: "Paracetamol only, avoid NSAIDs, repeat CBC in 24 hours.", service: "CBC, platelet count, and dengue NS1 requested." },
+  { diagnosis: "Acute Gastroenteritis", specialty: "Family Medicine", complaint: "Vomiting, abdominal cramps, and loose stools after recent meal exposure.", prescription: "ORS, zinc, and antiemetic as needed.", service: "Stool test if symptoms continue beyond 48 hours." },
+  { diagnosis: "Asthma Follow-up", specialty: "Pulmonology", complaint: "Intermittent wheeze and cough worse at night after dust exposure.", prescription: "Salbutamol inhaler PRN and inhaled corticosteroid continuation.", service: "Peak flow reading and inhaler technique review completed." },
+  { diagnosis: "Hypertension Follow-up", specialty: "Cardiology", complaint: "Routine blood pressure review with occasional dizziness.", prescription: "Continue antihypertensive medicine and home BP monitoring.", service: "Renal profile and ECG review planned." },
+  { diagnosis: "Issue of Medical Certificate", specialty: "Outpatient", complaint: "Administrative medical certificate request after outpatient review.", prescription: "No new medicine prescribed.", service: "Medical certificate prepared and verified." },
+];
+
+function makeEpisode(patientIndex: number, episodeIndex: number, patientName: string): Episode {
+  const template = EPISODE_TEMPLATES[(patientIndex + episodeIndex) % EPISODE_TEMPLATES.length];
+  const day = 1 + ((patientIndex * 3 + episodeIndex) % 28);
+  const month = 1 + (episodeIndex % 5);
+  const date = `2026-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+  const doctor = ["Dr. Aminath Shafia", "Dr. Muhammad Haris Ilyas", "Dr. Aya Gamal", "Dr. Imran Hassan", "Dr. Fathimath Saeena"][(patientIndex + episodeIndex) % 5];
+  return {
+    id: `EP-2026-${(patientIndex + 1).toString().padStart(3, "0")}-${(episodeIndex + 1).toString().padStart(2, "0")}`,
+    date,
+    doctor,
+    specialty: template.specialty,
+    diagnosis: template.diagnosis,
+    status: episodeIndex % 11 === 0 ? "active" : "closed",
+    sections: [
+      { id: `s-${patientIndex}-${episodeIndex}-complaint`, type: "complaint", title: "Clinical Details", content: template.complaint, createdAt: `${date}T08:30:00Z`, createdBy: doctor },
+      { id: `s-${patientIndex}-${episodeIndex}-advice`, type: "advice", title: "Advice", content: `Counselled ${patientName.split(" ")[0]} on warning signs, hydration, and follow-up timing.`, createdAt: `${date}T08:42:00Z`, createdBy: doctor },
+      { id: `s-${patientIndex}-${episodeIndex}-prescription`, type: "prescription", title: "Prescription", content: template.prescription, createdAt: `${date}T08:48:00Z`, createdBy: doctor },
+      { id: `s-${patientIndex}-${episodeIndex}-service`, type: "service", title: "Service", content: template.service, createdAt: `${date}T08:55:00Z`, createdBy: doctor },
+    ],
+    vitals: [
+      { timestamp: `${date}T08:25:00Z`, bp: `${112 + ((patientIndex + episodeIndex) % 28)}/${70 + ((patientIndex + episodeIndex) % 18)}`, heartRate: 72 + ((patientIndex + episodeIndex) % 38), temp: +(36.4 + ((episodeIndex % 18) / 10)).toFixed(1), spo2: 93 + ((patientIndex + episodeIndex) % 6), respRate: 16 + ((patientIndex + episodeIndex) % 8) },
+    ],
+  };
+}
+
+function withFiftyEpisodes(patient: Patient, patientIndex: number): Patient {
+  const episodes = [...patient.episodes];
+  for (let episodeIndex = episodes.length; episodeIndex < 50; episodeIndex += 1) {
+    episodes.push(makeEpisode(patientIndex, episodeIndex, patient.name));
+  }
+  return { ...patient, episodes };
+}
+
+function makePatient(patientIndex: number): Patient {
+  const name = `${FIRST_NAMES[patientIndex % FIRST_NAMES.length]} ${FAMILY_NAMES[(patientIndex * 5) % FAMILY_NAMES.length]}`;
+  const age = 18 + ((patientIndex * 7) % 62);
+  const gender: Patient["gender"] = patientIndex % 2 === 0 ? "Male" : "Female";
+  const island = ISLANDS[patientIndex % ISLANDS.length];
+  const atoll = ATOLLS[patientIndex % ATOLLS.length];
+  const patient: Patient = {
+    id: `patient${(patientIndex + 1).toString().padStart(5, "0")}`,
+    name,
+    nationalId: `A${(200000 + patientIndex * 791).toString().padStart(6, "0")}`,
+    dob: `${2026 - age}-${(1 + (patientIndex % 12)).toString().padStart(2, "0")}-${(1 + (patientIndex % 27)).toString().padStart(2, "0")}`,
+    age,
+    gender,
+    bloodType: ["O+", "A+", "B+", "AB+", "O-", "A-"][patientIndex % 6],
+    phone: `+960 7${(200000 + patientIndex * 137).toString().padStart(6, "0")}`,
+    atoll,
+    island,
+    allergies: patientIndex % 5 === 0 ? ["Penicillin"] : patientIndex % 7 === 0 ? ["Aspirin"] : [],
+    conditions: patientIndex % 4 === 0 ? ["Hypertension"] : patientIndex % 6 === 0 ? ["Asthma"] : [],
+    hospital: HOSPITAL_NAMES[patientIndex % HOSPITAL_NAMES.length],
+    registeredAt: `2024-${(1 + (patientIndex % 12)).toString().padStart(2, "0")}-10T08:30:00Z`,
+    episodes: [],
+  };
+  return withFiftyEpisodes(patient, patientIndex);
+}
+
+export const MOCK_PATIENTS: Patient[] = Array.from({ length: 100 }, (_, patientIndex) => (
+  patientIndex < BASE_PATIENTS.length ? withFiftyEpisodes(BASE_PATIENTS[patientIndex], patientIndex) : makePatient(patientIndex)
+));
 
 /** Find a patient by any partial match on id, name, or nationalId */
 export function searchPatients(query: string): Patient[] {

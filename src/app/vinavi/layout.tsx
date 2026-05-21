@@ -250,11 +250,12 @@ export default function VinaviLayout({ children }: { children: React.ReactNode }
             </div>
           </div>
           {menuOpen && (
-            <div className="absolute left-4 top-16 z-50 w-[360px] rounded border border-slate-200 bg-white p-4 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.24)]">
-              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-rose-600">Pitch controls</p>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="rounded bg-slate-50 p-3"><p className="text-xs text-slate-500">Patients</p><p className="text-2xl font-black">{MOCK_PATIENTS.length}</p></div>
-                <div className="rounded bg-slate-50 p-3"><p className="text-xs text-slate-500">Consultations</p><p className="text-2xl font-black">{totalConsultations}</p></div>
+            <div className="absolute left-4 top-16 z-50 w-[430px] border border-slate-200 bg-white p-4 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.24)]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-rose-600">Vinavi operator controls</p>
+              <div className="mt-3 divide-y divide-slate-100 rounded border border-slate-200 bg-slate-50">
+                <div className="flex items-center justify-between px-4 py-3"><span className="text-sm font-semibold text-slate-500">Patient registry</span><span className="font-mono text-2xl font-black">{MOCK_PATIENTS.length}</span></div>
+                <div className="flex items-center justify-between px-4 py-3"><span className="text-sm font-semibold text-slate-500">Consultation episodes</span><span className="font-mono text-2xl font-black">{totalConsultations.toLocaleString()}</span></div>
+                <div className="flex items-center justify-between px-4 py-3"><span className="text-sm font-semibold text-slate-500">Sync mode</span><span className="rounded bg-rose-100 px-2 py-1 text-xs font-black text-rose-700">Surveillance intake only</span></div>
               </div>
               <div className="mt-4 rounded border border-rose-100 bg-rose-50 p-3">
                 <p className="text-sm font-bold text-rose-800">Send consultation batch</p>

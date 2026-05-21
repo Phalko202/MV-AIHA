@@ -194,7 +194,7 @@ function VinaviSearchContent() {
           <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Registered Patients</p>
             <p className="mt-3 text-3xl font-bold text-slate-900">{stats.registeredPatients}</p>
-            <p className="mt-2 text-sm text-slate-500">Government sample registry loaded into Vinavi</p>
+            <p className="mt-2 text-sm text-slate-500">Patient registry available in Vinavi</p>
           </div>
           <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Consultation Episodes</p>
@@ -231,7 +231,7 @@ function VinaviSearchContent() {
               <div className="flex flex-col items-center rounded-[28px] border border-dashed border-slate-200 bg-slate-50 px-6 py-14 text-center">
                 <AlertCircle className="mb-3 h-8 w-8 text-rose-400" />
                 <p className="text-base font-semibold text-slate-800">No patient matched that search</p>
-                <p className="mt-2 text-sm text-slate-500">Try patient12312, Ahmed, Mariyam, or Hassan.</p>
+                <p className="mt-2 text-sm text-slate-500">Try patient12312, patient00004, Ahmed, Mariyam, or a national ID.</p>
               </div>
             ) : (
               <div className="space-y-3">

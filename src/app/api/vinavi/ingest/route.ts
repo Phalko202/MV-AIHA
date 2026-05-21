@@ -85,12 +85,12 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() });
   }
 
   const validation = validatePayload(body);
   if (!validation.ok) {
-    return NextResponse.json({ error: validation.error }, { status: 422 });
+    return NextResponse.json({ error: validation.error }, { status: 422, headers: corsHeaders() });
   }
 
   const record = upsertConsultation(validation.payload);
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     message: status === "pending"
       ? `Episode held pending until ${record.pendingUntil} (blank episode grace period). Re-POST with content to release early.`
       : "Episode accepted and ready for surveillance analytics.",
-  }, { status: 201 });
+  }, { status: 201, headers: corsHeaders() });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -112,12 +112,12 @@ export async function PATCH(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: corsHeaders() });
   }
 
   const validation = validatePayload(body);
   if (!validation.ok) {
-    return NextResponse.json({ error: validation.error }, { status: 422 });
+    return NextResponse.json({ error: validation.error }, { status: 422, headers: corsHeaders() });
   }
 
   const record = upsertConsultation(validation.payload);
@@ -128,7 +128,7 @@ export async function PATCH(request: NextRequest) {
     episodeId: record.payload.episodeId,
     status,
     pendingUntil: record.pendingUntil ?? null,
-  });
+  }, { headers: corsHeaders() });
 }
 
 function toSafeEvent(record: PendingConsultation, status: "ready" | "pending") {
@@ -158,5 +158,17 @@ export async function GET() {
     readyEvents: ready.slice(-100).reverse().map((record) => toSafeEvent(record, "ready")),
     pendingEvents: pending.slice(-50).reverse().map((record) => toSafeEvent(record, "pending")),
     updatedAt: new Date().toISOString(),
-  });
+  }, { headers: corsHeaders() });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders() });
+}
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
 }

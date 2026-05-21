@@ -19,7 +19,7 @@ import {
   type DashboardSummary, type DiseaseCode, type FacilityStatus, type IncidentEvent,
   type LogEntry, type PatientEncounter, type ReportMeta,
 } from "@/lib/surveillance-api";
-import { searchIcdLibrary, type IcdDisease } from "@/lib/icd-library";
+import { ICD_DISEASE_LIBRARY, searchIcdLibrary, type IcdDisease } from "@/lib/icd-library";
 import {
   DEFAULT_ANALYTICS_FILTERS,
   analyticsFiltersToEncounterLogFilter,
@@ -143,7 +143,7 @@ export default function SurveillancePortal({ aiPaused = false }: { aiPaused?: bo
 
   const liveEncounters = useMemo(() => {
     if (view !== "analytics") return encountersFor("all");
-    return filterAnalyticsEncounters(encountersFor(analyticsFilters.diagnosis as DiseaseCode | "all"), analyticsFilters);
+    return filterAnalyticsEncounters(encountersFor("all"), analyticsFilters);
   }, [view, analyticsFilters]);
 
   const headerStats = useMemo(() => {
@@ -613,23 +613,36 @@ function OutbreaksView({ onShowEncounters }: { onShowEncounters: (d: DiseaseCode
 function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: DiseaseCode | "all", filter?: Partial<PatientEncounter>, label?: string) => void }) {
   const [diagnosisCart, setDiagnosisCart] = useState<IcdDisease[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const savedCodes = JSON.parse(localStorage.getItem("mv-aihs-disease-watchlist") || "[]") as string[];
+      setDiagnosisCart(savedCodes.map((code) => ICD_DISEASE_LIBRARY.find((item) => item.code === code)).filter(Boolean) as IcdDisease[]);
+    } catch {
+      setDiagnosisCart([]);
+    }
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem("mv-aihs-disease-watchlist", JSON.stringify(diagnosisCart.map((item) => item.code)));
+    } catch {
+      // noop
+    }
+  }, [diagnosisCart]);
   const trackedCartCodes = diagnosisCart
-    .filter((item) => item.tracked && item.code in DISEASE_BY_CODE)
+    .filter((item) => item.code in DISEASE_BY_CODE)
     .map((item) => item.code as DiseaseCode);
   const list = trackedCartCodes.length > 0
     ? trackedCartCodes.flatMap((code) => encountersFor(code))
-    : diagnosisCart.length > 0
-      ? []
-      : encountersFor("all");
+    : [];
   const critical = list.filter((item) => item.severity === "critical").length;
   const foreign = list.filter((item) => item.origin === "foreign").length;
   const manualReview = list.filter((item) => item.aiConfidence < 0.82 || item.source === "manual_review").length;
-  const diseases = (trackedCartCodes.length > 0 ? DISEASES.filter((disease) => trackedCartCodes.includes(disease.code)) : DISEASES)
+  const diseases = DISEASES.filter((disease) => trackedCartCodes.includes(disease.code))
     .map((disease) => ({ disease, count: encountersFor(disease.code).length }))
     .sort((a, b) => b.count - a.count);
   const activeLogDisease = trackedCartCodes.length === 1 ? trackedCartCodes[0] : "all";
   const activeLogLabel = diagnosisCart.length === 0
-    ? "All disease episodes"
+    ? "No disease watchlist selected"
     : trackedCartCodes.length === 1
       ? `${DISEASE_BY_CODE[trackedCartCodes[0]].name} - selected diagnosis`
       : `${diagnosisCart.length} selected diagnosis cart item${diagnosisCart.length === 1 ? "" : "s"}`;
@@ -665,25 +678,26 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
       <Panel className="p-4">
         <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-center">
           <div>
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wide">Disease filter</span>
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wide">Disease watchlist</span>
             <div className="mt-2 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
               <DiagnosisCart cart={diagnosisCart} onRemove={(code) => setDiagnosisCart((current) => current.filter((item) => item.code !== code))} />
-              <button onClick={() => setFiltersOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-xs font-black text-white hover:bg-slate-800 cursor-pointer"><SlidersHorizontal className="h-4 w-4" />Open filter window</button>
+              <button onClick={() => setFiltersOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-xs font-black text-white hover:bg-slate-800 cursor-pointer"><SlidersHorizontal className="h-4 w-4" />Open tracking window</button>
             </div>
           </div>
-          <button onClick={() => onShowEncounters(activeLogDisease, undefined, activeLogLabel)} className="text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl px-4 py-3 cursor-pointer">Open encounter log</button>
+          <button disabled={trackedCartCodes.length === 0} onClick={() => onShowEncounters(activeLogDisease, undefined, activeLogLabel)} className="text-xs font-black text-white bg-blue-600 hover:bg-blue-500 rounded-xl px-4 py-3 cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-300">Open encounter log</button>
         </div>
       </Panel>
-      <OriginComparison disease={activeLogDisease} onShowEncounters={onShowEncounters} />
+      {trackedCartCodes.length > 0 ? <OriginComparison disease={activeLogDisease} onShowEncounters={onShowEncounters} /> : <Panel className="p-6 text-center"><p className="text-sm font-black text-slate-800">No diseases are being monitored yet.</p><p className="mt-1 text-xs text-slate-500">Open the tracking window and add one or more ICD diagnoses to start the Disease Statistics watchlist.</p></Panel>}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Safe signals" value={list.length.toLocaleString()} icon={ClipboardList} tone="blue" sub={diagnosisCart.length ? `${diagnosisCart.length} selected in cart` : "de-identified aggregate"} />
+        <StatCard label="Tracked signals" value={list.length.toLocaleString()} icon={ClipboardList} tone="blue" sub={diagnosisCart.length ? `${diagnosisCart.length} watchlist item${diagnosisCart.length === 1 ? "" : "s"}` : "no disease monitored"} />
         <StatCard label="Foreign episodes" value={foreign.toLocaleString()} icon={UsersRound} tone="amber" />
         <StatCard label="Critical severity" value={critical.toLocaleString()} icon={AlertTriangle} tone="rose" />
         <StatCard label="Manual review" value={manualReview.toLocaleString()} icon={Search} tone="violet" />
       </div>
       <Panel className="overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/70"><span className="text-sm font-black text-slate-800">Disease breakdown - click for patient history</span></div>
+        <div className="px-4 py-3 border-b border-white/70"><span className="text-sm font-black text-slate-800">Tracked disease breakdown - click for patient history</span></div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 p-4 animate-fadeIn">
+          {diseases.length === 0 && <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-6 text-center text-sm font-bold text-slate-400 lg:col-span-2">No tracked disease selected.</div>}
           {diseases.map((row) => {
             const IconComponent = diseaseIcons[row.disease.code] || Stethoscope;
             const tone = diseaseTones[row.disease.code] || "blue";
@@ -707,9 +721,9 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
           <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[32px] bg-white shadow-[0_40px_120px_rgba(15,23,42,0.3)]" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-white via-blue-50/70 to-cyan-50/60 px-6 py-5">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-wider text-blue-600">Disease statistics filters</p>
-                <h3 className="mt-1 text-xl font-black text-slate-950">Selected diagnosis window</h3>
-                <p className="mt-1 text-xs text-slate-500">Search ICD diagnosis, add to cart, remove any item, then close the window.</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-blue-600">Disease statistics watchlist</p>
+                <h3 className="mt-1 text-xl font-black text-slate-950">Always-tracked diagnosis window</h3>
+                <p className="mt-1 text-xs text-slate-500">Search ICD diagnosis, add to the watchlist, then save. Interactive Analytics remains a separate viewing cart.</p>
               </div>
               <button onClick={() => setFiltersOpen(false)} className="rounded-2xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"><X className="h-5 w-5" /></button>
             </div>
@@ -725,8 +739,8 @@ function PatientSummaryView({ onShowEncounters }: { onShowEncounters: (d: Diseas
               <DiagnosisCart cart={diagnosisCart} onRemove={(code) => setDiagnosisCart((current) => current.filter((item) => item.code !== code))} />
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-100 bg-white px-6 py-4">
-              <button onClick={() => setDiagnosisCart([])} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer">Clear cart</button>
-              <button onClick={() => setFiltersOpen(false)} className="rounded-2xl bg-blue-600 px-5 py-2 text-xs font-black text-white hover:bg-blue-500 cursor-pointer">Apply selection</button>
+              <button onClick={() => setDiagnosisCart([])} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 hover:text-slate-950 cursor-pointer">Clear watchlist</button>
+              <button onClick={() => setFiltersOpen(false)} className="rounded-2xl bg-blue-600 px-5 py-2 text-xs font-black text-white hover:bg-blue-500 cursor-pointer">Save watchlist</button>
             </div>
           </div>
         </div>
@@ -754,7 +768,7 @@ function PatientDiseaseMenu({ cart, onAdd, onRemove, onClear }: { cart: IcdDisea
             const added = cart.some((entry) => entry.code === item.code);
             return (
             <button key={item.code} type="button" onClick={() => { added ? onRemove(item.code) : onAdd(item); setQuery(""); }} className={`modern-menu-choice ${added ? "is-selected" : ""}`}>
-              <span><strong>{item.name}</strong><small>{item.icd10} - {item.category}{item.tracked ? " - tracked" : ""}</small></span>{added ? <Check className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              <span><strong>{item.name}</strong><small>{item.icd10} - {item.category}</small></span>{added ? <Check className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
             );
           })}
@@ -769,11 +783,11 @@ function DiagnosisCart({ cart, onRemove }: { cart: IcdDisease[]; onRemove: (code
   return (
     <div className="rounded-3xl border border-white/80 bg-white/60 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Diagnosis cart</p>
+        <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Always tracked</p>
         <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-black text-blue-700">{cart.length}</span>
       </div>
       <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
-        {cart.length === 0 && <span className="rounded-2xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-400">All diseases</span>}
+        {cart.length === 0 && <span className="rounded-2xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-400">No diseases monitored</span>}
         {cart.map((item) => (
           <button key={item.code} type="button" onClick={() => onRemove(item.code)} className="group inline-flex max-w-full items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs font-black text-blue-800 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 cursor-pointer">
             <span className="min-w-0 truncate">{item.name}</span>
@@ -1299,6 +1313,12 @@ function ReportsView({ analyticsFilters, aiPaused }: { analyticsFilters: Analyti
   const [template, setTemplate] = useState<"daily" | "weekly" | "outbreak" | "facility" | "foreign">("weekly");
   const [error, setError] = useState<string | null>(null);
   const [openMd, setOpenMd] = useState<GeneratedRun | null>(null);
+  const reportDiseaseCode = analyticsFilters.diagnoses.length === 1 && analyticsFilters.diagnoses[0] in DISEASE_BY_CODE
+    ? analyticsFilters.diagnoses[0] as DiseaseCode
+    : analyticsFilters.diagnosis !== "all" && analyticsFilters.diagnosis in DISEASE_BY_CODE
+      ? analyticsFilters.diagnosis as DiseaseCode
+      : "all";
+  const reportDiseaseLabel = reportDiseaseCode === "all" ? "the current analytics selection" : DISEASE_BY_CODE[reportDiseaseCode].name;
 
   const modelChain = [
     { name: "Raw Ingestion Buffer", role: "deepseek/deepseek-v4-flash:free — parses messy 12-hour clinic sync payloads into a clean surveillance JSON array", icon: Stethoscope, tone: "emerald" as const },
@@ -1316,7 +1336,7 @@ function ReportsView({ analyticsFilters, aiPaused }: { analyticsFilters: Analyti
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           template,
-          diseaseCode: analyticsFilters.diagnosis,
+          diseaseCode: reportDiseaseCode,
           facilityId: analyticsFilters.facilities[0],
           sampleSize: 4,
         }),
@@ -1355,7 +1375,7 @@ function ReportsView({ analyticsFilters, aiPaused }: { analyticsFilters: Analyti
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">Live generator</p>
             <h2 className="text-xl font-black tracking-tight text-slate-950">Generate a privacy-safe surveillance report</h2>
-            <p className="text-xs text-slate-500 max-w-xl">Pulls live signal from {analyticsFilters.diagnosis === "all" ? "all 10 tracked diseases" : (DISEASE_BY_CODE[analyticsFilters.diagnosis as DiseaseCode]?.name ?? analyticsFilters.diagnosis)}{analyticsFilters.facilities[0] ? ` at ${FACILITIES.find((facility) => facility.id === analyticsFilters.facilities[0])?.shortName}` : ""}, redacts every patient through <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">src/lib/redact.ts</code>, then sends only de-identified clinical text into the three-layer OpenRouter stack configured for MV-AIHS.</p>
+            <p className="text-xs text-slate-500 max-w-xl">Pulls live signal from {reportDiseaseLabel}{analyticsFilters.facilities[0] ? ` at ${FACILITIES.find((facility) => facility.id === analyticsFilters.facilities[0])?.shortName}` : ""}, redacts every patient through <code className="rounded bg-slate-100 px-1 py-0.5 text-[10px]">src/lib/redact.ts</code>, then sends only de-identified clinical text into the three-layer OpenRouter stack configured for MV-AIHS.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {(["daily", "weekly", "outbreak", "facility", "foreign"] as const).map((option) => (

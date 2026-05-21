@@ -113,19 +113,19 @@ export const FACILITIES: FacilityStatus[] = [
   }),
   facility({
     id: "treetop", name: "Tree Top Hospital", shortName: "TREE", type: "tertiary",
-    lat: 4.22302, lng: 73.53088, atoll: "Kaafu", island: "Hulhumale",
+    lat: 4.2225, lng: 73.5427, atoll: "Kaafu", island: "Hulhumale",
     alerts: [],
     conditions: [condition("ili", 15, "stable", 5), condition("febrile_seizure", 12, "down", 1), condition("chest_pain", 8, "stable", 1), condition("pneumonia", 8, "stable", 3)],
   }),
   facility({
     id: "hulhumale", name: "Hulhumale Hospital", shortName: "HMH", type: "regional",
-    lat: 4.21077, lng: 73.54088, atoll: "Kaafu", island: "Hulhumale",
+    lat: 4.2118, lng: 73.5433, atoll: "Kaafu", island: "Hulhumale",
     alerts: ["Dengue daily count above critical threshold", "Foreign-patient dengue cluster under review", "ILI trend rising for three consecutive uploads"],
     conditions: [condition("ili", 38, "up", 18), condition("dengue", 28, "up", 23), condition("gastro", 15, "up", 8), condition("pneumonia", 8, "up", 4)],
   }),
   facility({
     id: "hulhumale_gp2", name: "Hulhumale GP Clinic - Phase 2", shortName: "HGP2", type: "clinic",
-    lat: 4.22874, lng: 73.54186, atoll: "Kaafu", island: "Hulhumale Phase 2, Neighbourhood 3",
+    lat: 4.2268, lng: 73.5453, atoll: "Kaafu", island: "Hulhumale Phase 2, Neighbourhood 3",
     alerts: ["GP walk-in registry shows dengue increase among foreign workers"],
     conditions: [condition("dengue", 21, "up", 16), condition("ili", 19, "up", 9), condition("gastro", 8, "stable", 2), condition("hfmd", 7, "up", 1)],
   }),

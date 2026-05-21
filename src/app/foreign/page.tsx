@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Database, Globe2, Menu, RefreshCw, Search, ShieldCheck, UserRound } from "lucide-react";
+import { FOREIGN_CONSULTATION_COUNT, FOREIGN_PATIENTS } from "@/lib/foreign-data";
 
 const SURVEILLANCE_ORIGIN = process.env.NEXT_PUBLIC_SURVEILLANCE_URL ?? (process.env.NODE_ENV === "development" ? "http://localhost:3000" : "");
 
@@ -9,6 +10,7 @@ export default function ForeignPortalPage() {
   const [amount, setAmount] = useState("25");
   const [status, setStatus] = useState("Ready to send foreign consultation feed.");
   const [count, setCount] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const seedForeign = async () => {
     const parsed = Math.max(1, Math.min(500, Number(amount) || 25));
@@ -30,8 +32,8 @@ export default function ForeignPortalPage() {
 
   return (
     <div className="min-h-screen bg-[#eef8f2] text-slate-900">
-      <header className="flex h-16 items-center gap-4 bg-emerald-600 px-5 text-white shadow-md">
-        <button className="rounded border border-white/70 p-2"><Menu className="h-6 w-6" /></button>
+      <header className="relative flex h-16 items-center gap-4 bg-emerald-600 px-5 text-white shadow-md">
+        <button onClick={() => setMenuOpen((current) => !current)} className="rounded border border-white/70 p-2"><Menu className="h-6 w-6" /></button>
         <div className="text-2xl font-semibold">Foreign Portal</div>
         <div className="ml-4 flex h-10 flex-1 max-w-4xl items-center bg-white/16 px-4">
           <Search className="h-5 w-5" />
@@ -42,6 +44,21 @@ export default function ForeignPortalPage() {
           <p className="text-xs text-white/80">Hulhumale' Entry Clinic</p>
         </div>
         <ShieldCheck className="h-6 w-6" />
+        {menuOpen && (
+          <div className="absolute left-5 top-16 z-50 w-[420px] border border-emerald-200 bg-white p-4 text-slate-900 shadow-[0_24px_70px_rgba(15,23,42,0.24)]">
+            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-700">Foreign pitch controls</p>
+            <div className="mt-3 divide-y divide-slate-100 rounded border border-slate-200 bg-slate-50">
+              <div className="flex items-center justify-between px-4 py-3"><span className="text-sm font-semibold text-slate-500">Foreign patients</span><span className="font-mono text-2xl font-black">{FOREIGN_PATIENTS.length}</span></div>
+              <div className="flex items-center justify-between px-4 py-3"><span className="text-sm font-semibold text-slate-500">Consultation episodes</span><span className="font-mono text-2xl font-black">{FOREIGN_CONSULTATION_COUNT.toLocaleString()}</span></div>
+              <div className="flex items-center justify-between px-4 py-3"><span className="text-sm font-semibold text-slate-500">Sent to surveillance</span><span className="font-mono text-2xl font-black text-emerald-700">{count.toLocaleString()}</span></div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <input value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9]/g, "").slice(0, 3))} className="min-w-0 flex-1 rounded border border-emerald-200 px-3 py-2 text-sm font-bold outline-none" />
+              <button onClick={seedForeign} className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white"><Database className="h-4 w-4" />Send</button>
+            </div>
+            <p className="mt-2 text-xs font-semibold text-emerald-700">{status}</p>
+          </div>
+        )}
       </header>
 
       <main className="mx-auto max-w-6xl space-y-5 px-6 py-8">
@@ -52,7 +69,7 @@ export default function ForeignPortalPage() {
               <div>
                 <p className="text-[12px] font-bold uppercase tracking-[0.28em] text-emerald-600">Foreign Patient Feed</p>
                 <h1 className="mt-2 text-4xl font-bold tracking-tight">Safe consultation transfer</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">This portal represents foreign-patient clinical intake. It sends safe consultation summaries to surveillance, where syncing is paused until the operator resumes it.</p>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">This portal represents foreign-patient clinical intake with {FOREIGN_PATIENTS.length} source patients and {FOREIGN_CONSULTATION_COUNT.toLocaleString()} consultation episodes. It sends safe consultation summaries to surveillance, where syncing is paused until the operator resumes it.</p>
               </div>
             </div>
             <div className="rounded border border-emerald-100 bg-emerald-50 px-6 py-4 text-right">
