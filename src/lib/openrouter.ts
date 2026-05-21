@@ -12,7 +12,8 @@
 import { assertRedacted, type RedactedEpisode } from "@/lib/redact";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const PER_CALL_TIMEOUT_MS = 18_000;
+const EPISODE_CALL_TIMEOUT_MS = 18_000;
+const PIPELINE_CALL_TIMEOUT_MS = 45_000;
 
 /**
  * Episode-review models. Override at runtime with MV_AIHA_MODELS.
@@ -33,6 +34,35 @@ export const SURVEILLANCE_PIPELINE_MODELS = {
   ingestionBuffer: process.env.MV_AIHA_INGEST_MODEL ?? "deepseek/deepseek-v4-flash:free",
   analyticalSynthesizer: process.env.MV_AIHA_SYNTH_MODEL ?? "nvidia/nemotron-3-super-120b-a12b:free",
   strategicBriefing: process.env.MV_AIHA_BRIEF_MODEL ?? "openai/gpt-oss-120b:free",
+} as const;
+
+function uniqueModels(values: string[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values.map((item) => item.trim()).filter(Boolean)) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    output.push(value);
+  }
+  return output;
+}
+
+const SURVEILLANCE_PIPELINE_MODEL_CHAINS = {
+  ingestionBuffer: uniqueModels([
+    SURVEILLANCE_PIPELINE_MODELS.ingestionBuffer,
+    SURVEILLANCE_PIPELINE_MODELS.analyticalSynthesizer,
+    SURVEILLANCE_PIPELINE_MODELS.strategicBriefing,
+  ]),
+  analyticalSynthesizer: uniqueModels([
+    SURVEILLANCE_PIPELINE_MODELS.analyticalSynthesizer,
+    SURVEILLANCE_PIPELINE_MODELS.strategicBriefing,
+    SURVEILLANCE_PIPELINE_MODELS.ingestionBuffer,
+  ]),
+  strategicBriefing: uniqueModels([
+    SURVEILLANCE_PIPELINE_MODELS.strategicBriefing,
+    SURVEILLANCE_PIPELINE_MODELS.analyticalSynthesizer,
+    SURVEILLANCE_PIPELINE_MODELS.ingestionBuffer,
+  ]),
 } as const;
 
 const COMPLIANCE_DIRECTIVE = `# CRITICAL COMPLIANCE DIRECTIVE: ZERO-PII MANDATE
@@ -357,10 +387,10 @@ export function destructivePurgeBatch(rawLogs: Record<string, unknown>[]): { san
   };
 }
 
-async function callOpenRouter(model: string, apiKey: string, systemPrompt: string, userPrompt: string, maxTokens: number): Promise<{ raw: string; latencyMs: number }> {
+async function callOpenRouter(model: string, apiKey: string, systemPrompt: string, userPrompt: string, maxTokens: number, timeoutMs = EPISODE_CALL_TIMEOUT_MS): Promise<{ raw: string; latencyMs: number }> {
   const startedAt = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PER_CALL_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: "POST",
@@ -395,8 +425,8 @@ async function callOpenRouter(model: string, apiKey: string, systemPrompt: strin
   }
 }
 
-async function callJsonStage<T>(model: string, apiKey: string, systemPrompt: string, userPrompt: string, maxTokens: number, stage: string): Promise<JsonStageResult<T>> {
-  const { raw, latencyMs } = await callOpenRouter(model, apiKey, systemPrompt, userPrompt, maxTokens);
+async function callJsonStage<T>(model: string, apiKey: string, systemPrompt: string, userPrompt: string, maxTokens: number, stage: string, timeoutMs = PIPELINE_CALL_TIMEOUT_MS): Promise<JsonStageResult<T>> {
+  const { raw, latencyMs } = await callOpenRouter(model, apiKey, systemPrompt, userPrompt, maxTokens, timeoutMs);
   const parsed = safeParseJson(raw);
   if (!parsed) {
     throw new Error(`${stage} returned non-JSON output.`);
@@ -405,10 +435,29 @@ async function callJsonStage<T>(model: string, apiKey: string, systemPrompt: str
   return { model, latencyMs, parsed: parsed as T };
 }
 
+async function callJsonStageWithFallback<T>(models: string[], apiKey: string, systemPrompt: string, userPrompt: string, maxTokens: number, stage: string, timeoutMs = PIPELINE_CALL_TIMEOUT_MS): Promise<JsonStageResult<T>> {
+  const failures: string[] = [];
+  let cumulativeLatencyMs = 0;
+
+  for (const model of models) {
+    const startedAt = Date.now();
+    try {
+      const result = await callJsonStage<T>(model, apiKey, systemPrompt, userPrompt, maxTokens, stage, timeoutMs);
+      cumulativeLatencyMs += Date.now() - startedAt;
+      return { ...result, latencyMs: cumulativeLatencyMs };
+    } catch (error) {
+      cumulativeLatencyMs += Date.now() - startedAt;
+      failures.push(`${model}: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+
+  throw new Error(`${stage} failed across all fallback models. ${failures.join(" | ")}`);
+}
+
 async function callOne(model: string, episode: RedactedEpisode, apiKey: string): Promise<EnsembleVote> {
   const startedAt = Date.now();
   try {
-    const { raw } = await callOpenRouter(model, apiKey, EPISODE_SYSTEM_PROMPT, buildUserPrompt(episode), 320);
+    const { raw } = await callOpenRouter(model, apiKey, EPISODE_SYSTEM_PROMPT, buildUserPrompt(episode), 320, EPISODE_CALL_TIMEOUT_MS);
     const parsed = safeParseJson(raw);
     if (!parsed) {
       return { model, diagnosis: null, confidence: null, severity: null, recommendedAction: null, latencyMs: Date.now() - startedAt, error: "Non-JSON response" };
@@ -491,30 +540,30 @@ export async function analyzeSurveillanceBatch(rawLogs: Record<string, unknown>[
 
   const apiKey = process.env.OPENROUTER_API_KEY!;
 
-  const stage1 = await callJsonStage<IngestionBufferOutput>(
-    SURVEILLANCE_PIPELINE_MODELS.ingestionBuffer,
+  const stage1 = await callJsonStageWithFallback<IngestionBufferOutput>(
+    SURVEILLANCE_PIPELINE_MODEL_CHAINS.ingestionBuffer,
     apiKey,
     `You are the Raw Ingestion Buffer for MV-AIHS. ${COMPLIANCE_DIRECTIVE}\nReturn STRICT JSON only with this schema:\n{"records": Array<object>, "totals": {"records": number, "foreign": number, "critical": number, "regions": number}}\nNormalize keys, keep only surveillance-relevant fields, and preserve only aggregate-safe values.`,
     `Purged 12-hour clinic sync payload:\n${JSON.stringify(sanitized, null, 2)}\n\nReturn the normalized JSON now.`,
-    1800,
+    1200,
     "raw ingestion buffer",
   );
 
-  const stage2 = await callJsonStage<AnomalySynthesisOutput>(
-    SURVEILLANCE_PIPELINE_MODELS.analyticalSynthesizer,
+  const stage2 = await callJsonStageWithFallback<AnomalySynthesisOutput>(
+    SURVEILLANCE_PIPELINE_MODEL_CHAINS.analyticalSynthesizer,
     apiKey,
     `You are the Analytical Synthesizer for MV-AIHS. ${COMPLIANCE_DIRECTIVE}\nReturn STRICT JSON only with this schema:\n{"alerts": [{"region": string, "disease": string, "signal": string, "summary": string, "confidence": number}], "nationalSummary": string, "watchRegions": string[]}\nCross-reference the normalized records against implied national baselines and flag exact regional outbreak spikes.`,
     `Normalized surveillance data:\n${JSON.stringify(stage1.parsed, null, 2)}\n\nReturn the anomaly synthesis JSON now.`,
-    1200,
+    900,
     "analytical synthesizer",
   );
 
-  const stage3 = await callJsonStage<StrategicBriefingOutput>(
-    SURVEILLANCE_PIPELINE_MODELS.strategicBriefing,
+  const stage3 = await callJsonStageWithFallback<StrategicBriefingOutput>(
+    SURVEILLANCE_PIPELINE_MODEL_CHAINS.strategicBriefing,
     apiKey,
     `You are the Strategic Briefing Engine for MV-AIHS. ${COMPLIANCE_DIRECTIVE}\nReturn STRICT JSON only with this schema:\n{"briefing": string, "priorityLevel": "monitor"|"watch"|"critical", "recommendedActions": string[]}\nThe briefing must be authoritative, tactical, and no more than two sentences.`,
     `Anomaly synthesis:\n${JSON.stringify(stage2.parsed, null, 2)}\n\nReturn the executive briefing JSON now.`,
-    500,
+    320,
     "strategic briefing engine",
   );
 

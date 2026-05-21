@@ -803,7 +803,7 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
   const [seeding, setSeeding] = useState(false);
   const [selectedSeed, setSelectedSeed] = useState<SeededConsultationLite | null>(null);
   const [pipelineRunning, setPipelineRunning] = useState(false);
-  const [pipelineResult, setPipelineResult] = useState<{ paused?: boolean; purgeSummary?: { recordCount: number; removedFieldCount: number; scrubbedTextSpans: number }; briefing?: { briefing: string; priorityLevel: string; recommendedActions: string[] }; error?: string } | null>(null);
+  const [pipelineResult, setPipelineResult] = useState<{ paused?: boolean; pipelineModels?: string[]; purgeSummary?: { recordCount: number; removedFieldCount: number; scrubbedTextSpans: number }; briefing?: { briefing: string; priorityLevel: string; recommendedActions: string[] }; error?: string } | null>(null);
 
   const bots = useMemo(() => [
     { name: "Raw Ingestion Buffer", icon: FirstAidKit, task: "cleans incoming batches", model: "DeepSeek V4 Flash" },
@@ -966,6 +966,7 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
             </div>
           </Panel>
           <button onClick={() => onShowEncounters("all", undefined, "All surveillance episodes") } className="w-full rounded-2xl bg-slate-950 text-white px-4 py-4 text-sm font-black hover:bg-slate-800 cursor-pointer shadow-xl">Open patient episode log</button>
+          <LiveOpenRouterProbe />
         </div>
       </div>
 
@@ -981,6 +982,7 @@ function LiveFetchingView({ onShowEncounters }: { onShowEncounters: (d: DiseaseC
           {pipelineResult?.error && <p className="rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{pipelineResult.error}</p>}
           {pipelineResult?.purgeSummary && <div className="rounded-2xl bg-emerald-50 p-3 text-xs font-bold text-emerald-800">Privacy purge checked {pipelineResult.purgeSummary.recordCount} records. Removed {pipelineResult.purgeSummary.removedFieldCount} identity field(s) and scrubbed {pipelineResult.purgeSummary.scrubbedTextSpans} text span(s).</div>}
           {pipelineResult?.paused && <p className="mt-3 rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-800">AI is paused until OPENROUTER_API_KEY is added to .env.local.</p>}
+          {pipelineResult?.pipelineModels?.length ? <p className="mt-3 rounded-2xl bg-blue-50 p-3 text-xs font-bold text-blue-800">Model chain used: {pipelineResult.pipelineModels.join(" -> ")}</p> : null}
           {pipelineResult?.briefing && <div className="mt-3 space-y-2"><p className="text-sm font-black text-slate-900">{pipelineResult.briefing.briefing}</p><p className="text-xs font-bold uppercase text-blue-700">Priority: {pipelineResult.briefing.priorityLevel}</p>{pipelineResult.briefing.recommendedActions?.map((action) => <p key={action} className="rounded-xl bg-white/75 px-3 py-2 text-xs text-slate-600">{action}</p>)}</div>}
         </Panel>
       </div>
@@ -1082,10 +1084,10 @@ function LiveOpenRouterProbe() {
   return (
     <Panel className="p-4">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-emerald-600" /><p className="text-sm font-black text-slate-800">Live OpenRouter probe</p></div>
-        <button onClick={runProbe} disabled={running} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">{running ? "Running…" : "Run on 1 episode"}</button>
+        <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-emerald-600" /><p className="text-sm font-black text-slate-800">Test AI connection</p></div>
+        <button onClick={runProbe} disabled={running} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[11px] font-black text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">{running ? "Running..." : "Test 1 episode"}</button>
       </div>
-      <p className="text-[11px] text-slate-500 mb-2">Pulls one Vinavi episode, applies irreversible suppression plus local k-anonymity generalization, runs the three OpenRouter layers, and shows which fields were stripped.</p>
+      <p className="text-[11px] text-slate-500 mb-2">Pulls one episode, strips private fields, sends safe data to the AI stack, and shows the returned result.</p>
       {result?.error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700">{result.error}</p>}
       {result?.audit && (
         <div className="space-y-2 text-[11px]">
