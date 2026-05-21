@@ -215,17 +215,19 @@ export default function SurveillancePortal() {
             <h1 className="text-xl font-black text-slate-950 tracking-tight">{NAV_ITEMS.find((item) => item.id === view)?.label ?? "Command Dashboard"}</h1>
             <p className="text-xs text-slate-500">Ministry of Health - Maldives disease identification and surveillance</p>
           </div>
-          <div className="flex items-center gap-2 animate-fadeIn">
-            <button
-              onClick={() => setFilterStudioOpen(true)}
-              className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 px-3.5 py-2 text-xs font-black text-blue-700 hover:from-blue-100 hover:to-cyan-100 shadow-[0_10px_22px_rgba(37,99,235,0.14)] cursor-pointer"
-              title="Open the global Filter Studio"
-            >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              <span>Filter studio</span>
-              {activeFilterCount > 0 && <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">{activeFilterCount}</span>}
-            </button>
-          </div>
+          {view === "analytics" && (
+            <div className="flex items-center gap-2 animate-fadeIn">
+              <button
+                onClick={() => setFilterStudioOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 px-3.5 py-2 text-xs font-black text-blue-700 hover:from-blue-100 hover:to-cyan-100 shadow-[0_10px_22px_rgba(37,99,235,0.14)] cursor-pointer"
+                title="Open the global Filter Studio"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span>Filter studio</span>
+                {activeFilterCount > 0 && <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-black text-white">{activeFilterCount}</span>}
+              </button>
+            </div>
+          )}
           <div className="hidden xl:flex items-center gap-2 animate-fadeIn">
             {headerStats ? (
               <>
@@ -470,7 +472,7 @@ function DashboardView({ summary, incidents, facilities, onFacilityClick, onShow
             <div className="absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, rgba(56,189,248,0.5), transparent 25%), radial-gradient(circle at 90% 10%, rgba(16,185,129,0.35), transparent 24%)" }} />
             <div className="relative z-10">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/15 px-3 py-1 text-xs font-bold text-blue-100 mb-4">
-                <LogoMedallion className="h-7 w-7" /> AI disease surveillance engine
+                <img src={APP_ICON.shield} alt="" className="h-7 w-7 object-contain drop-shadow-[0_12px_18px_rgba(15,23,42,0.2)]" /> AI disease surveillance engine
               </div>
               <h2 className="max-w-2xl text-3xl font-black tracking-tight">Maldives disease signals, external-patient intelligence, and facility-level classification in one command surface.</h2>
               <p className="mt-3 max-w-xl text-sm text-blue-100/80">Markers are triggered by same-disease daily case thresholds, not beds or ventilators. More than 10 same-day cases becomes moderate; more than 20 becomes critical.</p>

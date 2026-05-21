@@ -118,10 +118,10 @@ const DATE_PRESETS: { value: DatePreset; label: string }[] = [
 ];
 
 const MENU_ICON = {
-  burden: "/logo-icon.png",
-  demographics: "/logo-icon.png",
-  clinical: "/logo-icon.png",
-  geographic: "/logo-icon.png",
+  burden: "/icons/people/chart.png",
+  demographics: "/icons/3d/boy.png",
+  clinical: "/icons/3d/shield.png",
+  geographic: "/icons/people/earth.png",
 };
 
 const DEFAULT_DATE_FILTER: AnalyticsDateFilter = { preset: "all", start: "", end: "" };

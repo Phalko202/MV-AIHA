@@ -105,7 +105,7 @@
 }
 
 .analytics-logo-glyph img {
-  border-radius: 999px;
+  border-radius: 0;
   object-fit: contain;
   object-position: center;
   filter: drop-shadow(0 16px 18px rgba(15, 23, 42, 0.18));
